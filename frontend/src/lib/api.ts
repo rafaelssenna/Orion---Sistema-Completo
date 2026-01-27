@@ -1,12 +1,20 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://orion-sistema-completo-production.up.railway.app/api/v1";
+// Production API URL - always use HTTPS
+const PRODUCTION_API_URL = "https://orion-sistema-completo-production.up.railway.app/api/v1";
 
 class ApiClient {
-  // Get API URL with HTTPS enforcement at runtime
   private getApiUrl(): string {
-    if (typeof window !== "undefined" && window.location.protocol === "https:") {
-      return BASE_URL.replace("http://", "https://");
+    // In browser, check if we have an env override for development
+    if (typeof window !== "undefined") {
+      // If on localhost, use env variable or localhost default
+      if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+        const envUrl = process.env.NEXT_PUBLIC_API_URL;
+        return envUrl || "http://localhost:8000/api/v1";
+      }
+      // In production, always use HTTPS
+      return PRODUCTION_API_URL;
     }
-    return BASE_URL;
+    // SSR fallback
+    return PRODUCTION_API_URL;
   }
 
   private getAuthHeader(): HeadersInit {
