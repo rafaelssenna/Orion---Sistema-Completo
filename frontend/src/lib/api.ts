@@ -1,16 +1,14 @@
-// Force HTTPS in production
-const getApiUrl = () => {
-  const url = process.env.NEXT_PUBLIC_API_URL || "https://orion-sistema-completo-production.up.railway.app/api/v1";
-  // Ensure HTTPS in production
-  if (typeof window !== "undefined" && window.location.protocol === "https:") {
-    return url.replace("http://", "https://");
-  }
-  return url;
-};
-
-const API_URL = getApiUrl();
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://orion-sistema-completo-production.up.railway.app/api/v1";
 
 class ApiClient {
+  // Get API URL with HTTPS enforcement at runtime
+  private getApiUrl(): string {
+    if (typeof window !== "undefined" && window.location.protocol === "https:") {
+      return BASE_URL.replace("http://", "https://");
+    }
+    return BASE_URL;
+  }
+
   private getAuthHeader(): HeadersInit {
     const token =
       typeof window !== "undefined"
@@ -49,7 +47,7 @@ class ApiClient {
     if (!refresh) return false;
 
     try {
-      const response = await fetch(`${API_URL}/auth/refresh`, {
+      const response = await fetch(`${this.getApiUrl()}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: refresh }),
@@ -67,7 +65,7 @@ class ApiClient {
   }
 
   async get<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${this.getApiUrl()}${endpoint}`, {
       headers: {
         ...this.getAuthHeader(),
       },
@@ -76,7 +74,7 @@ class ApiClient {
   }
 
   async post<T>(endpoint: string, data?: unknown): Promise<T> {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${this.getApiUrl()}${endpoint}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -88,7 +86,7 @@ class ApiClient {
   }
 
   async put<T>(endpoint: string, data: unknown): Promise<T> {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${this.getApiUrl()}${endpoint}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -100,7 +98,7 @@ class ApiClient {
   }
 
   async patch<T>(endpoint: string, data: unknown): Promise<T> {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${this.getApiUrl()}${endpoint}`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -112,7 +110,7 @@ class ApiClient {
   }
 
   async delete<T>(endpoint: string): Promise<T> {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${this.getApiUrl()}${endpoint}`, {
       method: "DELETE",
       headers: {
         ...this.getAuthHeader(),
@@ -129,7 +127,7 @@ class ApiClient {
     formData.append("username", email);
     formData.append("password", password);
 
-    const response = await fetch(`${API_URL}/auth/login`, {
+    const response = await fetch(`${this.getApiUrl()}/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
