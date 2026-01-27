@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8002/api/v1";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://orion-sistema-completo-production.up.railway.app/api/v1";
 
 class ApiClient {
   private getAuthHeader(): HeadersInit {
