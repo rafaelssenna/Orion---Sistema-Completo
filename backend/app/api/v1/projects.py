@@ -13,7 +13,7 @@ from app.models.user import User
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-@router.get("/", response_model=ProjectListResponse)
+@router.get("", response_model=ProjectListResponse)
 async def list_projects(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
@@ -43,7 +43,7 @@ async def my_projects(
     return projects
 
 
-@router.post("/", response_model=ProjectResponse)
+@router.post("", response_model=ProjectResponse)
 async def create_project(
     project_data: ProjectCreate,
     db: Session = Depends(get_db),

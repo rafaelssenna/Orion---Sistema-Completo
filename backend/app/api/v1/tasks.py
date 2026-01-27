@@ -15,7 +15,7 @@ from app.models.user import User
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-@router.get("/", response_model=TaskListResponse)
+@router.get("", response_model=TaskListResponse)
 async def list_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
@@ -49,7 +49,7 @@ async def my_tasks(
     return service.get_by_assignee(current_user.id, status=status)
 
 
-@router.post("/", response_model=TaskResponse)
+@router.post("", response_model=TaskResponse)
 async def create_task(
     task_data: TaskCreate,
     db: Session = Depends(get_db),
