@@ -45,9 +45,10 @@ class ProjectService:
         limit: int = 20
     ) -> Tuple[List[Project], int]:
         """Buscar projetos onde o programador tem tarefas atribuídas"""
-        project_ids = self.db.query(Task.project_id).filter(
+        from sqlalchemy import select
+        project_ids = select(Task.project_id).where(
             Task.assignee_id == user_id
-        ).distinct().subquery()
+        ).distinct()
 
         query = self.db.query(Project).filter(Project.id.in_(project_ids))
         total = query.count()
@@ -77,8 +78,6 @@ class ProjectService:
             "id": project.id,
             "name": project.name,
             "description": project.description,
-            "internal_prompt": project.internal_prompt,
-            "main_features": project.main_features or [],
             "status": project.status,
             "created_by": project.created_by,
             "created_at": project.created_at,
@@ -92,8 +91,6 @@ class ProjectService:
         project = Project(
             name=project_data.name,
             description=project_data.description,
-            internal_prompt=project_data.internal_prompt,
-            main_features=project_data.main_features,
             created_by=user_id
         )
         self.db.add(project)
