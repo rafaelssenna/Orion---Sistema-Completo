@@ -1,4 +1,14 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://orion-sistema-completo-production.up.railway.app/api/v1";
+// Force HTTPS in production
+const getApiUrl = () => {
+  const url = process.env.NEXT_PUBLIC_API_URL || "https://orion-sistema-completo-production.up.railway.app/api/v1";
+  // Ensure HTTPS in production
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    return url.replace("http://", "https://");
+  }
+  return url;
+};
+
+const API_URL = getApiUrl();
 
 class ApiClient {
   private getAuthHeader(): HeadersInit {
