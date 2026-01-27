@@ -17,6 +17,7 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     status: Optional[ProjectStatus] = None
+    image_url: Optional[str] = None
 
 
 class ProjectResponse(ProjectBase):
@@ -24,6 +25,7 @@ class ProjectResponse(ProjectBase):
     status: ProjectStatus
     created_by: int
     created_at: datetime
+    image_url: Optional[str] = None
     task_stats: Optional[Dict[str, int]] = None
 
     class Config:
@@ -55,6 +57,7 @@ class ProjectDetailResponse(ProjectBase):
     status: ProjectStatus
     created_by: int
     created_at: datetime
+    image_url: Optional[str] = None
     tasks: List[TaskInProject] = []
     creator: CreatorInfo
     task_stats: Dict[str, int]

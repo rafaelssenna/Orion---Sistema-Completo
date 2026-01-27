@@ -13,6 +13,7 @@ export interface Project {
   id: number;
   name: string;
   description: string | null;
+  image_url: string | null;
   status: "em_andamento" | "finalizado";
   created_by: number;
   created_at: string;

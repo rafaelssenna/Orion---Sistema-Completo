@@ -23,6 +23,9 @@ class Settings(BaseSettings):
         except:
             return ["http://localhost:3000", "http://localhost:3001"]
 
+    # ImgBB
+    IMGBB_API_KEY: str = ""
+
     # App
     DEBUG: bool = False
 

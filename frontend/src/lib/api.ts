@@ -2,6 +2,10 @@
 const PRODUCTION_API_URL = "https://orion-sistema-completo-production.up.railway.app/api/v1";
 
 class ApiClient {
+  getBaseUrl(): string {
+    return this.getApiUrl();
+  }
+
   private getApiUrl(): string {
     // In browser, check if we have an env override for development
     if (typeof window !== "undefined") {

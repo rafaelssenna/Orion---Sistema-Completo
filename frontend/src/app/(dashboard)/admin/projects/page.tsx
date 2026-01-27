@@ -16,14 +16,26 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { Plus, FolderIcon } from "lucide-react";
 
 export default function ProjectsPage() {
-  const { projects, loading, createProject } = useProjects();
+  const { projects, loading, createProject, uploadProjectImage } = useProjects();
   const [showForm, setShowForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCreateProject = async (data: any) => {
+  const handleCreateProject = async (data: any, imageFile?: File) => {
     setIsSubmitting(true);
     try {
-      await createProject(data);
+      const project = await createProject(data);
+
+      // Se tiver imagem, fazer upload
+      if (imageFile) {
+        try {
+          await uploadProjectImage(project.id, imageFile);
+        } catch (imgError) {
+          console.error("Erro ao fazer upload da imagem:", imgError);
+          // Projeto foi criado, apenas a imagem falhou
+          alert("Projeto criado, mas houve um erro ao fazer upload da imagem.");
+        }
+      }
+
       setShowForm(false);
     } catch (error) {
       console.error("Erro ao criar projeto:", error);

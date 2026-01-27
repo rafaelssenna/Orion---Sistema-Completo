@@ -78,6 +78,7 @@ class ProjectService:
             "id": project.id,
             "name": project.name,
             "description": project.description,
+            "image_url": project.image_url,
             "status": project.status,
             "created_by": project.created_by,
             "created_at": project.created_at,

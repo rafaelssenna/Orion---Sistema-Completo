@@ -46,12 +46,39 @@ export function useProjects() {
   const createProject = async (data: {
     name: string;
     description?: string;
-    internal_prompt?: string;
-    main_features?: string[];
   }): Promise<Project> => {
     const project = await api.post<Project>("/projects", data);
     await fetchProjects();
     return project;
+  };
+
+  const uploadProjectImage = async (
+    projectId: number,
+    file: File
+  ): Promise<{ image_url: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const token = localStorage.getItem("access_token");
+    const response = await fetch(
+      `${api.getBaseUrl()}/projects/${projectId}/upload-image`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.detail || "Erro ao fazer upload da imagem");
+    }
+
+    const result = await response.json();
+    await fetchProjects();
+    return result;
   };
 
   const updateProject = async (
@@ -82,5 +109,6 @@ export function useProjects() {
     createProject,
     updateProject,
     deleteProject,
+    uploadProjectImage,
   };
 }

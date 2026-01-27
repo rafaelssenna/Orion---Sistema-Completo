@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List
+import httpx
+import base64
 
 from app.api.deps import get_db, get_current_user, get_current_admin
 from app.schemas.project import (
@@ -9,8 +11,11 @@ from app.schemas.project import (
 )
 from app.services.project import ProjectService
 from app.models.user import User
+from app.config import settings
 
 router = APIRouter(prefix="/projects", tags=["projects"])
+
+IMGBB_API_KEY = getattr(settings, 'IMGBB_API_KEY', None)
 
 
 @router.get("", response_model=ProjectListResponse)
@@ -90,3 +95,56 @@ async def delete_project(
     service = ProjectService(db)
     service.delete(project_id)
     return {"message": "Projeto removido com sucesso"}
+
+
+@router.post("/{project_id}/upload-image")
+async def upload_project_image(
+    project_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: any = Depends(get_current_admin)
+):
+    """Upload de imagem do projeto para ImgBB"""
+    if not IMGBB_API_KEY:
+        raise HTTPException(status_code=500, detail="IMGBB_API_KEY não configurada")
+
+    # Verificar se projeto existe
+    service = ProjectService(db)
+    project = service.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+
+    # Verificar tipo de arquivo
+    allowed_types = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Tipo de arquivo não permitido. Use JPEG, PNG, GIF ou WebP.")
+
+    # Ler e converter para base64
+    content = await file.read()
+    base64_image = base64.b64encode(content).decode("utf-8")
+
+    # Upload para ImgBB
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.imgbb.com/1/upload",
+            data={
+                "key": IMGBB_API_KEY,
+                "image": base64_image,
+                "name": f"project_{project_id}_{file.filename}"
+            }
+        )
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=500, detail="Erro ao fazer upload da imagem")
+
+    result = response.json()
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail="Falha no upload para ImgBB")
+
+    image_url = result["data"]["url"]
+
+    # Atualizar projeto com a URL da imagem
+    from app.schemas.project import ProjectUpdate
+    service.update(project_id, ProjectUpdate(image_url=image_url))
+
+    return {"image_url": image_url, "delete_url": result["data"].get("delete_url")}
