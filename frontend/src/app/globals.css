@@ -1,0 +1,325 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Orion Professional Theme - Clean Corporate Design */
+:root {
+  --orion-space: #0f1419;
+  --orion-dark: #151b23;
+  --orion-light: #1c242d;
+  --orion-accent: #3b82f6;
+  --orion-accent-light: #60a5fa;
+  --orion-nebula: #7c3aed;
+  --orion-cosmic: #0ea5e9;
+  --orion-star: #f8fafc;
+  --orion-silver: #94a3b8;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--orion-space);
+  color: var(--orion-star);
+  min-height: 100vh;
+}
+
+/* Background - clean, no glow effects */
+.nebula-glow {
+  display: none;
+}
+
+.stars-bg {
+  display: none;
+}
+
+.shooting-star {
+  display: none;
+}
+
+/* Clean card style */
+.glass-card {
+  background: rgba(21, 27, 35, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  transition: border-color 0.2s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Primary button - clean style */
+.btn-primary {
+  background: #3b82f6;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: #2563eb;
+}
+
+/* Outline button */
+.btn-outline {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  padding: 10px 20px;
+  color: #94a3b8;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-outline:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(148, 163, 184, 0.5);
+  color: #f8fafc;
+}
+
+/* Stats card - clean */
+.stats-card {
+  background: rgba(21, 27, 35, 0.95);
+  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Clean text - solid color instead of gradient */
+.gradient-text {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.gradient-text-purple {
+  color: #a855f7;
+  font-weight: 700;
+}
+
+/* Sidebar styles */
+.sidebar {
+  background: rgba(15, 20, 25, 0.98);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Progress bar - clean */
+.progress-glow {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-glow-bar {
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Badge styles */
+.badge-accent {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
+.badge-nebula {
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  color: #a78bfa;
+}
+
+.badge-cosmic {
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
+}
+
+.badge-success {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+.badge-warning {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.badge-danger {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+/* Icon wrapper - subtle */
+.icon-wrapper {
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+  color: #3b82f6;
+}
+
+.icon-wrapper-purple {
+  background: rgba(124, 58, 237, 0.1);
+  color: #a78bfa;
+}
+
+.icon-wrapper-cyan {
+  background: rgba(14, 165, 233, 0.1);
+  color: #38bdf8;
+}
+
+.icon-wrapper-success {
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+}
+
+/* Input styles */
+input, textarea, select {
+  background: rgba(21, 27, 35, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #f8fafc !important;
+  border-radius: 8px;
+  transition: border-color 0.2s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: none !important;
+  border-color: #3b82f6 !important;
+  box-shadow: none !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: rgba(148, 163, 184, 0.5) !important;
+}
+
+/* Table styles */
+table {
+  background: rgba(21, 27, 35, 0.8);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+th {
+  background: rgba(255, 255, 255, 0.03);
+  color: #94a3b8;
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* Dialog/Modal styles */
+[role="dialog"] {
+  background: rgba(21, 27, 35, 0.98) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 12px !important;
+}
+
+/* No floating animations - professional */
+.float-animation {
+  animation: none;
+}
+
+/* Loading spinner */
+.loading-spinner {
+  border-color: rgba(148, 163, 184, 0.2);
+  border-top-color: #3b82f6;
+}
+
+/* Custom select dropdown */
+[data-radix-select-viewport] {
+  background: rgba(21, 27, 35, 0.98) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+}
+
+[data-radix-select-item] {
+  color: #f8fafc !important;
+  border-radius: 4px;
+}
+
+[data-radix-select-item]:hover,
+[data-radix-select-item][data-highlighted] {
+  background: rgba(59, 130, 246, 0.1) !important;
+  color: #60a5fa !important;
+}
+
+/* Feature cards - clean */
+.feature-card {
+  background: rgba(21, 27, 35, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 24px;
+  transition: border-color 0.2s ease;
+}
+
+.feature-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Dashboard card */
+.dashboard-card {
+  background: rgba(21, 27, 35, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+}
+
+.dashboard-card-accent {
+  background: rgba(21, 27, 35, 0.95);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+}
+
+/* Highlight number */
+.highlight-number {
+  color: #3b82f6;
+  font-weight: 600;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+/* Section divider */
+.section-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 1.5rem 0;
+}
