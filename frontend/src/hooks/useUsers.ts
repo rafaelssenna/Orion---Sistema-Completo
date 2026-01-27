@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import { User } from "@/types";
+import { User, UserRole } from "@/types";
 
 export function useUsers() {
   const [users, setUsers] = useState<User[]>([]);
@@ -57,7 +57,7 @@ export function useUsers() {
     name: string;
     email: string;
     password: string;
-    role: "admin" | "programador";
+    role: UserRole;
   }): Promise<User> => {
     const user = await api.post<User>("/auth/register", data);
     await fetchUsers();
