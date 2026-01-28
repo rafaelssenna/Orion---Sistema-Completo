@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import { Task } from "@/types";
+import { Task, TaskComment, TaskPriority } from "@/types";
 
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -73,6 +73,8 @@ export function useTasks() {
     description?: string;
     project_id: number;
     assignee_id?: number;
+    priority?: TaskPriority;
+    due_date?: string;
   }): Promise<Task> => {
     const task = await api.post<Task>("/tasks", data);
     await fetchTasks();
@@ -101,6 +103,26 @@ export function useTasks() {
     await fetchTasks();
   };
 
+  // Comment methods
+  const getComments = async (taskId: number): Promise<TaskComment[]> => {
+    const data = await api.get<{ comments: TaskComment[]; total: number }>(
+      `/tasks/${taskId}/comments`
+    );
+    return data.comments;
+  };
+
+  const addComment = async (taskId: number, content: string): Promise<TaskComment> => {
+    return await api.post<TaskComment>(`/tasks/${taskId}/comments`, { content });
+  };
+
+  const editComment = async (commentId: number, content: string): Promise<TaskComment> => {
+    return await api.put<TaskComment>(`/tasks/comments/${commentId}`, { content });
+  };
+
+  const deleteComment = async (commentId: number): Promise<void> => {
+    await api.delete(`/tasks/comments/${commentId}`);
+  };
+
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
@@ -117,5 +139,9 @@ export function useTasks() {
     updateTask,
     updateTaskStatus,
     deleteTask,
+    getComments,
+    addComment,
+    editComment,
+    deleteComment,
   };
 }

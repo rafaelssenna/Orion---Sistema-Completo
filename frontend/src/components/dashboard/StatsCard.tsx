@@ -19,14 +19,14 @@ const colorClasses = {
     bar: "from-orion-accent to-orion-accent-light",
   },
   nebula: {
-    icon: "bg-orion-nebula-500/15",
-    iconColor: "text-orion-nebula-400",
-    bar: "from-orion-nebula-500 to-orion-nebula-400",
+    icon: "bg-blue-500/15",
+    iconColor: "text-blue-400",
+    bar: "from-blue-500 to-blue-400",
   },
   cosmic: {
-    icon: "bg-orion-cosmic-500/15",
-    iconColor: "text-orion-cosmic-400",
-    bar: "from-orion-cosmic-500 to-orion-cosmic-400",
+    icon: "bg-purple-500/15",
+    iconColor: "text-purple-400",
+    bar: "from-purple-500 to-purple-400",
   },
   success: {
     icon: "bg-emerald-500/15",

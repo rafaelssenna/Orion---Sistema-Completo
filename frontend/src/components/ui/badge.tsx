@@ -7,13 +7,13 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-orion-nebula-500/20 text-orion-nebula-300 border border-orion-nebula-500/30",
-        secondary: "bg-orion-dark/50 text-orion-star-silver border border-orion-nebula-500/20",
-        success: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
-        warning: "bg-amber-500/20 text-amber-400 border border-amber-500/30",
-        danger: "bg-red-500/20 text-red-400 border border-red-500/30",
-        outline: "border border-orion-nebula-500/30 text-orion-star-silver bg-transparent",
-        cosmic: "bg-orion-cosmic-500/20 text-orion-cosmic-300 border border-orion-cosmic-500/30",
+        default: "bg-orion-accent/15 text-orion-accent border border-orion-accent/25",
+        secondary: "bg-white/5 text-orion-silver border border-white/10",
+        success: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25",
+        warning: "bg-amber-500/15 text-amber-400 border border-amber-500/25",
+        danger: "bg-red-500/15 text-red-400 border border-red-500/25",
+        outline: "border border-white/15 text-orion-silver bg-transparent",
+        info: "bg-blue-500/15 text-blue-400 border border-blue-500/25",
       },
     },
     defaultVariants: {

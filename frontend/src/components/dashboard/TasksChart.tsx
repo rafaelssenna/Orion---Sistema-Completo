@@ -14,7 +14,7 @@ export function TasksChart({ pending, inProgress, completed }: TasksChartProps) 
 
   const data = useMemo(() => [
     { label: "Pendentes", value: pending, color: "#f59e0b" },
-    { label: "Em Andamento", value: inProgress, color: "#3b82f6" },
+    { label: "Em Andamento", value: inProgress, color: "#f5c518" },
     { label: "Concluidas", value: completed, color: "#10b981" },
   ], [pending, inProgress, completed]);
 

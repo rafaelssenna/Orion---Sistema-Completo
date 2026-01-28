@@ -51,7 +51,7 @@ export function ProjectCard({ project, basePath = "/admin" }: ProjectCardProps) 
             </button>
           </div>
         ) : (
-          <div className="w-full h-24 bg-gradient-to-br from-orion-accent/20 to-orion-nebula/20 flex items-center justify-center">
+          <div className="w-full h-24 bg-gradient-to-br from-orion-accent/20 to-orion-accent-dark/20 flex items-center justify-center">
             <ImageIcon className="w-8 h-8 text-orion-silver/40" />
           </div>
         )}

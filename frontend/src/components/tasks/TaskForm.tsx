@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Task, User, Project } from "@/types";
+import { Task, User, Project, TaskPriority } from "@/types";
 import { useState } from "react";
 
 const taskSchema = z.object({
@@ -26,7 +26,16 @@ type TaskFormData = z.infer<typeof taskSchema>;
 interface TaskSubmitData extends TaskFormData {
   project_id: number;
   assignee_id?: number;
+  priority: TaskPriority;
+  due_date?: string;
 }
+
+const priorityOptions: { value: TaskPriority; label: string; color: string }[] = [
+  { value: "baixa", label: "Baixa", color: "text-gray-400" },
+  { value: "media", label: "Media", color: "text-blue-400" },
+  { value: "alta", label: "Alta", color: "text-orange-400" },
+  { value: "urgente", label: "Urgente", color: "text-red-400" },
+];
 
 interface TaskFormProps {
   task?: Task;
@@ -55,6 +64,10 @@ export function TaskForm({
   const [assigneeId, setAssigneeId] = useState<number | undefined>(
     task?.assignee_id || undefined
   );
+  const [priority, setPriority] = useState<TaskPriority>(task?.priority || "media");
+  const [dueDate, setDueDate] = useState<string>(
+    task?.due_date ? task.due_date.split("T")[0] : ""
+  );
 
   const {
     register,
@@ -80,6 +93,8 @@ export function TaskForm({
       ...data,
       project_id: projectId,
       assignee_id: assigneeId,
+      priority,
+      due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
     });
   };
 
@@ -147,6 +162,37 @@ export function TaskForm({
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Prioridade</label>
+          <Select
+            value={priority}
+            onValueChange={(v) => setPriority(v as TaskPriority)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione a prioridade" />
+            </SelectTrigger>
+            <SelectContent>
+              {priorityOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <span className={option.color}>{option.label}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Data de Entrega</label>
+          <Input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="w-full"
+          />
+        </div>
       </div>
 
       <div className="flex justify-end gap-3 pt-4 border-t">

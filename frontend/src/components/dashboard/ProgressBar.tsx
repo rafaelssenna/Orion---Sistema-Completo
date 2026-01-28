@@ -12,8 +12,8 @@ interface ProgressBarProps {
 
 const colorClasses = {
   accent: "from-orion-accent to-orion-accent-light",
-  nebula: "from-orion-nebula-500 to-orion-nebula-400",
-  cosmic: "from-orion-cosmic-500 to-orion-cosmic-400",
+  nebula: "from-blue-500 to-blue-400",
+  cosmic: "from-purple-500 to-purple-400",
   success: "from-emerald-500 to-emerald-400",
   warning: "from-amber-500 to-amber-400",
 };

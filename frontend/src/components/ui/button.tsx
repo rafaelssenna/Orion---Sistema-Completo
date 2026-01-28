@@ -4,16 +4,17 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orion-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-orion-space disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orion-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-orion-space disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
       variant: {
-        default: "bg-orion-accent text-white hover:bg-orion-accent-dark",
+        default: "bg-orion-accent text-black hover:bg-orion-accent-light",
         destructive: "bg-red-500/15 text-red-400 border border-red-500/20 hover:bg-red-500/25",
-        outline: "border border-white/15 bg-transparent text-orion-star-silver hover:bg-white/5 hover:text-orion-star-white",
-        secondary: "bg-white/5 text-orion-star-white border border-white/10 hover:bg-white/10",
-        ghost: "text-orion-star-silver hover:bg-white/5 hover:text-orion-star-white",
+        outline: "border border-white/10 bg-transparent text-orion-silver hover:bg-white/5 hover:text-white hover:border-orion-accent/50",
+        secondary: "bg-white/5 text-white border border-white/10 hover:bg-white/10",
+        ghost: "text-orion-silver hover:bg-white/5 hover:text-white",
         link: "text-orion-accent underline-offset-4 hover:underline",
+        success: "bg-emerald-500 text-white hover:bg-emerald-400",
       },
       size: {
         default: "h-10 px-5 py-2",

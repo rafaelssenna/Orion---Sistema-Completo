@@ -25,17 +25,32 @@ export interface ProjectDetail extends Project {
   creator: User;
 }
 
+export type TaskPriority = "baixa" | "media" | "alta" | "urgente";
+
+export interface TaskComment {
+  id: number;
+  content: string;
+  task_id: number;
+  user_id: number;
+  user: { id: number; name: string };
+  created_at: string;
+  updated_at: string | null;
+}
+
 export interface Task {
   id: number;
   title: string;
   description: string | null;
   status: "pendente" | "em_andamento" | "concluida";
+  priority: TaskPriority;
+  due_date: string | null;
   project_id: number;
   assignee_id: number | null;
   created_at: string;
   completed_at: string | null;
   assignee?: User;
   project?: Project;
+  comments?: TaskComment[];
 }
 
 export interface TaskStats {

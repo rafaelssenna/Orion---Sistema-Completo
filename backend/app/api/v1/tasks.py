@@ -6,11 +6,12 @@ from datetime import datetime
 from app.api.deps import get_db, get_current_user, get_current_admin
 from app.schemas.task import (
     TaskCreate, TaskUpdate, TaskResponse,
-    TaskListResponse, TaskStatusUpdate
+    TaskListResponse, TaskStatusUpdate,
+    TaskCommentCreate, TaskCommentUpdate, TaskCommentResponse, TaskCommentListResponse
 )
 from app.services.task import TaskService
 from app.models.task import TaskStatus
-from app.models.user import User
+from app.models.user import User, UserRole
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -122,3 +123,63 @@ async def delete_task(
     service = TaskService(db)
     service.delete(task_id)
     return {"message": "Tarefa removida com sucesso"}
+
+
+# Comment endpoints
+@router.get("/{task_id}/comments", response_model=TaskCommentListResponse)
+async def list_comments(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Listar comentários de uma tarefa"""
+    service = TaskService(db)
+    # Verify task access
+    task = service.get_by_id(task_id, current_user)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+
+    comments = service.get_comments(task_id)
+    return {"comments": comments, "total": len(comments)}
+
+
+@router.post("/{task_id}/comments", response_model=TaskCommentResponse)
+async def add_comment(
+    task_id: int,
+    comment_data: TaskCommentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Adicionar comentário a uma tarefa"""
+    service = TaskService(db)
+    # Verify task access
+    task = service.get_by_id(task_id, current_user)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+
+    return service.add_comment(task_id, current_user.id, comment_data.content)
+
+
+@router.put("/comments/{comment_id}", response_model=TaskCommentResponse)
+async def update_comment(
+    comment_id: int,
+    comment_data: TaskCommentUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Atualizar comentário"""
+    service = TaskService(db)
+    return service.update_comment(comment_id, current_user.id, comment_data.content)
+
+
+@router.delete("/comments/{comment_id}")
+async def delete_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Remover comentário"""
+    service = TaskService(db)
+    is_admin = current_user.role == UserRole.ADMIN
+    service.delete_comment(comment_id, current_user.id, is_admin)
+    return {"message": "Comentário removido com sucesso"}
