@@ -450,13 +450,15 @@ function DevDashboard({ data: _legacyData }: { data: any }) {
 
   const { summary, projectDistribution, dailyTimeline, recentSessions, neglectedProjects, balanceAlerts } = timeData;
 
-  // Prepare pie chart data
+  // Prepare pie chart data — use effortScore for slice size (weighted by code changes)
   const pieData = projectDistribution
     .filter((p: any) => p.commits > 0)
     .map((p: any, i: number) => ({
       name: p.projectName,
-      value: p.estimatedMinutes,
+      value: p.effortScore || p.estimatedMinutes,
       percentage: p.percentage,
+      additions: p.totalAdditions || 0,
+      deletions: p.totalDeletions || 0,
       color: COLORS[i % COLORS.length],
     }));
 
@@ -558,7 +560,10 @@ function DevDashboard({ data: _legacyData }: { data: any }) {
                   </Pie>
                   <Tooltip
                     contentStyle={{ background: '#111827', border: '1px solid #1e3a5f', borderRadius: '12px', fontSize: '12px' }}
-                    formatter={(value: any) => [`${Math.round(value / 60 * 10) / 10}h`, 'Tempo Estimado']}
+                    formatter={(value: any, name: any, props: any) => {
+                      const entry = props.payload;
+                      return [`${entry.percentage}% do esforço`, entry.name];
+                    }}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -582,6 +587,14 @@ function DevDashboard({ data: _legacyData }: { data: any }) {
                     </div>
                     <div className="flex items-center gap-3 mt-1">
                       <span className="text-xs text-orion-text-muted">{p.commits} commits</span>
+                      {(p.totalAdditions > 0 || p.totalDeletions > 0) && (
+                        <span className="text-xs text-orion-text-muted">
+                          <span className="text-green-400">+{p.totalAdditions}</span>
+                          {' / '}
+                          <span className="text-red-400">-{p.totalDeletions}</span>
+                          {' linhas'}
+                        </span>
+                      )}
                       <span className="text-xs text-orion-text-muted">
                         {p.daysSinceLastCommit === 0 ? 'Último: hoje' :
                          p.daysSinceLastCommit === 1 ? 'Último: ontem' :

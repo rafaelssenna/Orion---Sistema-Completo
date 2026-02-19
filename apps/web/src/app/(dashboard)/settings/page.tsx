@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { Github, RefreshCw, Users, Plus, Building2, Trash2, Wrench } from 'lucide-react';
+import { Github, RefreshCw, Users, Plus, Building2, Trash2, Wrench, BarChart3 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -17,6 +17,7 @@ export default function SettingsPage() {
   const [syncingRepo, setSyncingRepo] = useState<string | null>(null);
   const [resyncingAll, setResyncingAll] = useState(false);
   const [fixingAuthors, setFixingAuthors] = useState(false);
+  const [fixingStats, setFixingStats] = useState(false);
   const [message, setMessage] = useState('');
 
   // Register new user
@@ -100,6 +101,19 @@ export default function SettingsPage() {
       setMessage(`Erro: ${err.message}`);
     } finally {
       setFixingAuthors(false);
+    }
+  };
+
+  const handleFixStats = async () => {
+    setFixingStats(true);
+    setMessage('');
+    try {
+      const result = await api.fixCommitStats();
+      setMessage(`${result.updated} commits atualizados com estatísticas reais do GitHub (additions/deletions/files).${result.errors > 0 ? ` ${result.errors} falharam.` : ''}`);
+    } catch (err: any) {
+      setMessage(`Erro: ${err.message}`);
+    } finally {
+      setFixingStats(false);
     }
   };
 
@@ -197,6 +211,14 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-orion-text-muted">Repositórios Conectados</h3>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={handleFixStats}
+                  disabled={fixingStats}
+                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-orion-purple/10 text-orion-purple hover:bg-orion-purple/20 transition-colors disabled:opacity-50"
+                >
+                  <BarChart3 size={14} className={fixingStats ? 'animate-spin' : ''} />
+                  {fixingStats ? 'Corrigindo...' : 'Corrigir Estatísticas'}
+                </button>
                 <button
                   onClick={handleFixAuthors}
                   disabled={fixingAuthors}

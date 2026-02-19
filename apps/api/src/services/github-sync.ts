@@ -75,11 +75,18 @@ export async function syncRepoCommits(repoId: string, fullSync = false): Promise
     if (existing) continue;
 
     let diff = '';
+    let detailStats = { additions: 0, deletions: 0, filesChanged: 0 };
     try {
       const detail: any = await githubFetch(
         `https://api.github.com/repos/${repo.repoFullName}/commits/${commit.sha}`,
         token
       );
+      // Extract stats from the detail endpoint (list endpoint doesn't include these)
+      detailStats = {
+        additions: detail.stats?.additions || 0,
+        deletions: detail.stats?.deletions || 0,
+        filesChanged: detail.files?.length || 0,
+      };
       diff = (detail.files || [])
         .map((f: any) => `${f.filename}: +${f.additions} -${f.deletions}\n${f.patch || ''}`)
         .join('\n\n');
@@ -104,9 +111,9 @@ export async function syncRepoCommits(repoId: string, fullSync = false): Promise
         authorEmail: commitEmail || null,
         authorName: commitName || null,
         aiSummary,
-        filesChanged: commit.files?.length || 0,
-        additions: commit.stats?.additions || 0,
-        deletions: commit.stats?.deletions || 0,
+        filesChanged: detailStats.filesChanged,
+        additions: detailStats.additions,
+        deletions: detailStats.deletions,
         committedAt: new Date(commit.commit.committer.date),
       },
     });

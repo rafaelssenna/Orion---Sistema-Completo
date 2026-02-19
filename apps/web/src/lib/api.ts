@@ -177,6 +177,10 @@ class ApiClient {
     return this.request<{ message: string; updated: number }>('/github/fix-authors', { method: 'POST' });
   }
 
+  fixCommitStats() {
+    return this.request<{ message: string; updated: number; errors: number; total: number }>('/github/fix-stats', { method: 'POST' });
+  }
+
   getCommits(projectId: string) {
     return this.request<any[]>(`/github/commits/${projectId}`);
   }

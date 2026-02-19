@@ -213,6 +213,66 @@ githubRouter.post('/fix-authors', authenticate, authorize('HEAD', 'ADMIN'), asyn
   }
 });
 
+// POST /api/github/fix-stats - Fetch real additions/deletions/filesChanged for commits with zeros
+githubRouter.post('/fix-stats', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
+  try {
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const orgFilter = currentUser?.organizationId ? { organizationId: currentUser.organizationId } : {};
+
+    // Find commits with zero stats (likely from old syncs that didn't extract detail)
+    const zeroCommits = await prisma.gitCommit.findMany({
+      where: {
+        additions: 0,
+        deletions: 0,
+        project: orgFilter,
+      },
+      include: {
+        repo: { select: { repoFullName: true, project: { select: { organization: { select: { githubToken: true } } } } } },
+      },
+    });
+
+    if (zeroCommits.length === 0) {
+      res.json({ message: 'Todos os commits já possuem estatísticas', updated: 0 });
+      return;
+    }
+
+    const token = await getOrgGitHubToken(req.user!.id);
+    let updated = 0;
+    let errors = 0;
+
+    for (const commit of zeroCommits) {
+      try {
+        const detail: any = await githubFetch(
+          `https://api.github.com/repos/${commit.repo.repoFullName}/commits/${commit.sha}`,
+          token
+        );
+
+        await prisma.gitCommit.update({
+          where: { sha: commit.sha },
+          data: {
+            additions: detail.stats?.additions || 0,
+            deletions: detail.stats?.deletions || 0,
+            filesChanged: detail.files?.length || commit.filesChanged,
+          },
+        });
+        updated++;
+      } catch {
+        errors++;
+      }
+    }
+
+    res.json({
+      message: `${updated} commits atualizados com estatísticas reais`,
+      updated,
+      errors,
+      total: zeroCommits.length,
+    });
+  } catch (error: any) {
+    console.error('Fix stats error:', error);
+    res.status(500).json({ error: error.message || 'Erro ao corrigir estatísticas' });
+  }
+});
+
 // POST /api/github/webhook - GitHub webhook endpoint
 githubRouter.post('/webhook', async (req, res) => {
   try {
@@ -247,19 +307,29 @@ githubRouter.post('/webhook', async (req, res) => {
         const existing = await prisma.gitCommit.findUnique({ where: { sha: commit.id } });
         if (existing) continue;
 
-        // Fetch full commit details for diff
+        // Fetch full commit details for diff and stats
         let diff = '';
+        let detailStats = {
+          additions: 0,
+          deletions: 0,
+          filesChanged: (commit.added?.length || 0) + (commit.modified?.length || 0) + (commit.removed?.length || 0),
+        };
         if (token) {
           try {
             const detail: any = await githubFetch(
               `https://api.github.com/repos/${repoFullName}/commits/${commit.id}`,
               token
             );
+            detailStats = {
+              additions: detail.stats?.additions || 0,
+              deletions: detail.stats?.deletions || 0,
+              filesChanged: detail.files?.length || detailStats.filesChanged,
+            };
             diff = (detail.files || [])
               .map((f: any) => `${f.filename}: +${f.additions} -${f.deletions}\n${f.patch || ''}`)
               .join('\n\n');
           } catch {
-            // Ignore
+            // Ignore - keep webhook payload counts as fallback
           }
         }
 
@@ -280,9 +350,9 @@ githubRouter.post('/webhook', async (req, res) => {
             authorEmail: commitEmail || null,
             authorName: commitName || null,
             aiSummary,
-            filesChanged: (commit.added?.length || 0) + (commit.modified?.length || 0) + (commit.removed?.length || 0),
-            additions: 0,
-            deletions: 0,
+            filesChanged: detailStats.filesChanged,
+            additions: detailStats.additions,
+            deletions: detailStats.deletions,
             committedAt: new Date(commit.timestamp),
           },
         });
