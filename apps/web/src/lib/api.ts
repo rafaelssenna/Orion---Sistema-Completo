@@ -188,6 +188,26 @@ class ApiClient {
   removeOrgMember(userId: string) {
     return this.request<any>(`/organizations/members/${userId}`, { method: 'DELETE' });
   }
+
+  saveGithubToken(githubToken: string) {
+    return this.request<{ message: string }>('/organizations/github-token', {
+      method: 'PUT',
+      body: JSON.stringify({ githubToken }),
+    });
+  }
+
+  getAvailableRepos() {
+    return this.request<Array<{
+      fullName: string;
+      name: string;
+      description: string | null;
+      private: boolean;
+      updatedAt: string;
+      defaultBranch: string;
+      language: string | null;
+      connectedProjectId: string | null;
+    }>>('/github/available-repos');
+  }
 }
 
 export const api = new ApiClient();

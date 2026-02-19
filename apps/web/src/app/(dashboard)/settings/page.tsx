@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { Github, RefreshCw, Link as LinkIcon, Users, Plus, Building2, Trash2 } from 'lucide-react';
+import { Github, RefreshCw, Users, Plus, Building2, Trash2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -11,10 +11,9 @@ export default function SettingsPage() {
   const [org, setOrg] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // GitHub connect
-  const [connectProjectId, setConnectProjectId] = useState('');
-  const [repoName, setRepoName] = useState('');
-  const [connecting, setConnecting] = useState(false);
+  // GitHub token
+  const [githubToken, setGithubToken] = useState('');
+  const [savingToken, setSavingToken] = useState(false);
   const [syncingRepo, setSyncingRepo] = useState<string | null>(null);
   const [message, setMessage] = useState('');
 
@@ -45,21 +44,21 @@ export default function SettingsPage() {
     }
   };
 
-  const handleConnectRepo = async (e: React.FormEvent) => {
+  const handleSaveToken = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!connectProjectId || !repoName.trim()) return;
-    setConnecting(true);
+    if (!githubToken.trim()) return;
+    setSavingToken(true);
     setMessage('');
 
     try {
-      await api.connectRepo(connectProjectId, repoName);
-      setMessage('Repositório conectado com sucesso!');
-      setRepoName('');
+      await api.saveGithubToken(githubToken);
+      setMessage('Token GitHub salvo com sucesso!');
+      setGithubToken('');
       loadData();
     } catch (err: any) {
       setMessage(`Erro: ${err.message}`);
     } finally {
-      setConnecting(false);
+      setSavingToken(false);
     }
   };
 
@@ -129,59 +128,65 @@ export default function SettingsPage() {
           <Github size={24} className="text-orion-text" />
           <h2 className="text-lg font-semibold">Integração GitHub</h2>
         </div>
-        <p className="text-sm text-orion-text-muted mb-4">
-          Conecte repositórios do GitHub aos projetos para tracking automático de commits com análise de IA.
-        </p>
 
-        <form onSubmit={handleConnectRepo} className="flex gap-3 mb-6">
-          <select
-            value={connectProjectId}
-            onChange={e => setConnectProjectId(e.target.value)}
-            className="bg-orion-surface-light border border-orion-border rounded-lg px-4 py-2.5 text-orion-text focus:outline-none focus:border-orion-primary"
-            required
-          >
-            <option value="">Projeto...</option>
-            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          <input
-            value={repoName}
-            onChange={e => setRepoName(e.target.value)}
-            placeholder="org/repo-name"
-            className="flex-1 bg-orion-surface-light border border-orion-border rounded-lg px-4 py-2.5 text-orion-text focus:outline-none focus:border-orion-primary"
-            required
-          />
-          <button
-            type="submit"
-            disabled={connecting}
-            className="bg-orion-primary hover:bg-orion-primary-light text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            <LinkIcon size={16} />
-            {connecting ? 'Conectando...' : 'Conectar'}
-          </button>
-        </form>
+        {/* Token status */}
+        <div className="flex items-center gap-2 mb-4">
+          <div className={`w-2.5 h-2.5 rounded-full ${org?.hasGithubToken ? 'bg-orion-success' : 'bg-orion-danger'}`} />
+          <span className="text-sm text-orion-text-muted">
+            {org?.hasGithubToken ? 'Token GitHub configurado' : 'Token GitHub não configurado'}
+          </span>
+        </div>
 
-        {/* Connected repos */}
-        <div className="space-y-2">
-          {projects.map(p => p.githubRepos?.map((repo: any) => (
-            <div key={repo.id} className="flex items-center justify-between p-3 bg-orion-surface-light rounded-xl">
-              <div className="flex items-center gap-3">
-                <Github size={16} className="text-orion-text-muted" />
-                <div>
-                  <span className="text-sm font-medium">{repo.repoFullName}</span>
-                  <span className="text-xs text-orion-text-muted ml-2">{p.name}</span>
-                </div>
-              </div>
+        {user?.role === 'HEAD' && (
+          <form onSubmit={handleSaveToken} className="space-y-3 mb-6">
+            <p className="text-sm text-orion-text-muted">
+              Cole um Personal Access Token do GitHub com permissão de leitura de repositórios (scope: repo).
+              Os repos aparecerão automaticamente ao criar projetos.
+            </p>
+            <div className="flex gap-3">
+              <input
+                type="password"
+                value={githubToken}
+                onChange={e => setGithubToken(e.target.value)}
+                placeholder="ghp_xxxxxxxxxxxx"
+                className="flex-1 bg-orion-surface-light border border-orion-border rounded-lg px-4 py-2.5 text-orion-text focus:outline-none focus:border-orion-primary"
+              />
               <button
-                onClick={() => handleSync(repo.id)}
-                disabled={syncingRepo === repo.id}
-                className="flex items-center gap-1 text-sm text-orion-primary hover:text-orion-primary-light disabled:opacity-50"
+                type="submit"
+                disabled={savingToken || !githubToken.trim()}
+                className="bg-orion-primary hover:bg-orion-primary-light text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
               >
-                <RefreshCw size={14} className={syncingRepo === repo.id ? 'animate-spin' : ''} />
-                {syncingRepo === repo.id ? 'Sincronizando...' : 'Sincronizar'}
+                {savingToken ? 'Salvando...' : 'Salvar Token'}
               </button>
             </div>
-          )))}
-        </div>
+          </form>
+        )}
+
+        {/* Connected repos */}
+        {projects.some(p => p.githubRepos?.length > 0) && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-orion-text-muted mb-2">Repositórios Conectados</h3>
+            {projects.map(p => p.githubRepos?.map((repo: any) => (
+              <div key={repo.id} className="flex items-center justify-between p-3 bg-orion-surface-light rounded-xl">
+                <div className="flex items-center gap-3">
+                  <Github size={16} className="text-orion-text-muted" />
+                  <div>
+                    <span className="text-sm font-medium">{repo.repoFullName}</span>
+                    <span className="text-xs text-orion-text-muted ml-2">{p.name}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleSync(repo.id)}
+                  disabled={syncingRepo === repo.id}
+                  className="flex items-center gap-1 text-sm text-orion-primary hover:text-orion-primary-light disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={syncingRepo === repo.id ? 'animate-spin' : ''} />
+                  {syncingRepo === repo.id ? 'Sincronizando...' : 'Sincronizar'}
+                </button>
+              </div>
+            )))}
+          </div>
+        )}
       </section>
 
       {/* Organization Info */}

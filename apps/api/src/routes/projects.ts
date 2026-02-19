@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.js';
+import { syncRepoCommits } from '../services/github-sync.js';
 
 export const projectRouter = Router();
 
@@ -13,6 +14,7 @@ const createProjectSchema = z.object({
   startDate: z.string().datetime().optional(),
   deadline: z.string().datetime().optional(),
   memberIds: z.array(z.string()).optional().default([]),
+  repoFullName: z.string().optional(),
 });
 
 const updateProjectSchema = z.object({
@@ -41,6 +43,7 @@ projectRouter.get('/', authenticate, async (req: AuthRequest, res) => {
         members: {
           include: { user: { select: { id: true, name: true, role: true, avatarUrl: true } } },
         },
+        githubRepos: { select: { id: true, repoFullName: true, lastSyncAt: true } },
         _count: { select: { tasks: true, activityLogs: true, gitCommits: true } },
       },
       orderBy: { updatedAt: 'desc' },
@@ -103,6 +106,24 @@ projectRouter.post('/', authenticate, authorize('HEAD', 'ADMIN'), async (req: Au
         },
       },
     });
+
+    // Auto-link GitHub repo if provided
+    if (data.repoFullName) {
+      try {
+        const repo = await prisma.gitHubRepo.create({
+          data: {
+            projectId: project.id,
+            repoFullName: data.repoFullName,
+          },
+        });
+        // Trigger initial sync (fire-and-forget)
+        syncRepoCommits(repo.id).catch(err => {
+          console.error('Initial sync failed:', err);
+        });
+      } catch (err) {
+        console.error('Failed to link repo:', err);
+      }
+    }
 
     res.status(201).json(project);
   } catch (error) {

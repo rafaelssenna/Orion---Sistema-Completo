@@ -86,7 +86,12 @@ organizationRouter.get('/mine', authenticate, async (req: AuthRequest, res) => {
       return;
     }
 
-    res.json(user.organization);
+    // Never expose the raw token to the frontend
+    const { githubToken, ...orgData } = user.organization as any;
+    res.json({
+      ...orgData,
+      hasGithubToken: !!githubToken,
+    });
   } catch {
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
@@ -155,6 +160,49 @@ organizationRouter.post('/members', authenticate, authorize('HEAD'), async (req:
     }
     console.error('Add member error:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// PUT /api/organizations/github-token - Save GitHub token (HEAD only)
+organizationRouter.put('/github-token', authenticate, authorize('HEAD'), async (req: AuthRequest, res) => {
+  try {
+    const { githubToken } = req.body;
+    if (typeof githubToken !== 'string' || !githubToken.trim()) {
+      res.status(400).json({ error: 'Token inválido' });
+      return;
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user?.organizationId) {
+      res.status(400).json({ error: 'Você não pertence a uma organização' });
+      return;
+    }
+
+    // Validate token against GitHub
+    try {
+      const ghRes = await fetch('https://api.github.com/user', {
+        headers: {
+          Authorization: `Bearer ${githubToken}`,
+          Accept: 'application/vnd.github.v3+json',
+        },
+      });
+      if (!ghRes.ok) {
+        res.status(400).json({ error: 'Token GitHub inválido ou sem permissões' });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: 'Não foi possível validar o token no GitHub' });
+      return;
+    }
+
+    await prisma.organization.update({
+      where: { id: user.organizationId },
+      data: { githubToken },
+    });
+
+    res.json({ message: 'Token GitHub salvo com sucesso' });
+  } catch {
+    res.status(500).json({ error: 'Erro ao salvar token GitHub' });
   }
 });
 

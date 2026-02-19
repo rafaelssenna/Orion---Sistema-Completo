@@ -2,22 +2,58 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.js';
+import { githubFetch, getOrgGitHubToken, syncRepoCommits } from '../services/github-sync.js';
 import { analyzeCommitDiff } from '../services/gemini.js';
 
 export const githubRouter = Router();
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+// GET /api/github/available-repos - List all repos from the org's GitHub account
+githubRouter.get('/available-repos', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
+  try {
+    const token = await getOrgGitHubToken(req.user!.id);
 
-async function githubFetch(url: string) {
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${GITHUB_TOKEN}`,
-      Accept: 'application/vnd.github.v3+json',
-    },
-  });
-  if (!res.ok) throw new Error(`GitHub API error: ${res.status}`);
-  return res.json();
-}
+    // Fetch all repos accessible to the token (paginated)
+    let allRepos: any[] = [];
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const repos: any[] = await githubFetch(
+        `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated`,
+        token
+      );
+      allRepos = allRepos.concat(repos);
+      hasMore = repos.length === 100;
+      page++;
+    }
+
+    // Get already connected repos to mark them
+    const connectedRepos = await prisma.gitHubRepo.findMany({
+      select: { repoFullName: true, projectId: true },
+    });
+    const connectedMap = new Map(connectedRepos.map(r => [r.repoFullName, r.projectId]));
+
+    const result = allRepos.map((repo: any) => ({
+      fullName: repo.full_name,
+      name: repo.name,
+      description: repo.description,
+      private: repo.private,
+      updatedAt: repo.updated_at,
+      defaultBranch: repo.default_branch,
+      language: repo.language,
+      connectedProjectId: connectedMap.get(repo.full_name) || null,
+    }));
+
+    res.json(result);
+  } catch (error: any) {
+    if (error.message?.includes('Token GitHub não configurado')) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    console.error('Available repos error:', error);
+    res.status(500).json({ error: 'Erro ao buscar repositórios do GitHub' });
+  }
+});
 
 // POST /api/github/connect-repo - Connect a GitHub repo to a project
 const connectRepoSchema = z.object({
@@ -25,13 +61,14 @@ const connectRepoSchema = z.object({
   repoFullName: z.string().min(1, 'Nome do repositório é obrigatório (ex: org/repo)'),
 });
 
-githubRouter.post('/connect-repo', authenticate, authorize('HEAD', 'ADMIN'), async (req, res) => {
+githubRouter.post('/connect-repo', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
     const data = connectRepoSchema.parse(req.body);
+    const token = await getOrgGitHubToken(req.user!.id);
 
     // Verify repo exists on GitHub
     try {
-      await githubFetch(`https://api.github.com/repos/${data.repoFullName}`);
+      await githubFetch(`https://api.github.com/repos/${data.repoFullName}`, token);
     } catch {
       res.status(400).json({ error: 'Repositório não encontrado no GitHub' });
       return;
@@ -44,10 +81,19 @@ githubRouter.post('/connect-repo', authenticate, authorize('HEAD', 'ADMIN'), asy
       },
     });
 
+    // Trigger initial sync (fire-and-forget)
+    syncRepoCommits(repo.id).catch(err => {
+      console.error('Initial sync failed:', err);
+    });
+
     res.status(201).json(repo);
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: error.errors[0].message });
+      return;
+    }
+    if ((error as any).message?.includes('Token GitHub')) {
+      res.status(400).json({ error: (error as any).message });
       return;
     }
     res.status(500).json({ error: 'Erro ao conectar repositório' });
@@ -57,96 +103,11 @@ githubRouter.post('/connect-repo', authenticate, authorize('HEAD', 'ADMIN'), asy
 // POST /api/github/sync/:repoId - Sync commits from a repo
 githubRouter.post('/sync/:repoId', authenticate, authorize('HEAD', 'ADMIN'), async (req, res) => {
   try {
-    const repo = await prisma.gitHubRepo.findUnique({
-      where: { id: req.params.repoId },
-      include: { project: true },
-    });
-
-    if (!repo) {
-      res.status(404).json({ error: 'Repositório não encontrado' });
-      return;
-    }
-
-    // Fetch recent commits
-    const since = repo.lastSyncAt?.toISOString() || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const commits: any[] = await githubFetch(
-      `https://api.github.com/repos/${repo.repoFullName}/commits?since=${since}&per_page=100`
-    );
-
-    let newCommits = 0;
-
-    for (const commit of commits) {
-      // Check if commit already exists
-      const existing = await prisma.gitCommit.findUnique({ where: { sha: commit.sha } });
-      if (existing) continue;
-
-      // Fetch commit details (diff)
-      let diff = '';
-      try {
-        const detail: any = await githubFetch(
-          `https://api.github.com/repos/${repo.repoFullName}/commits/${commit.sha}`
-        );
-        diff = (detail.files || [])
-          .map((f: any) => `${f.filename}: +${f.additions} -${f.deletions}\n${f.patch || ''}`)
-          .join('\n\n');
-      } catch {
-        // Ignore diff fetch errors
-      }
-
-      // Analyze with Gemini AI
-      const aiSummary = diff
-        ? await analyzeCommitDiff(commit.commit.message, diff)
-        : null;
-
-      await prisma.gitCommit.create({
-        data: {
-          repoId: repo.id,
-          projectId: repo.projectId,
-          sha: commit.sha,
-          message: commit.commit.message,
-          aiSummary,
-          filesChanged: commit.files?.length || 0,
-          additions: commit.stats?.additions || 0,
-          deletions: commit.stats?.deletions || 0,
-          committedAt: new Date(commit.commit.committer.date),
-        },
-      });
-
-      // Create an activity log entry with the AI summary
-      if (aiSummary) {
-        const projectMembers = await prisma.projectMember.findMany({
-          where: { projectId: repo.projectId },
-          select: { userId: true },
-        });
-
-        // Attribute to the first dev member of the project
-        const devMember = projectMembers[0];
-        if (devMember) {
-          await prisma.activityLog.create({
-            data: {
-              userId: devMember.userId,
-              projectId: repo.projectId,
-              description: aiSummary,
-              type: 'AI_SUMMARY',
-              date: new Date(commit.commit.committer.date),
-            },
-          });
-        }
-      }
-
-      newCommits++;
-    }
-
-    // Update last sync timestamp
-    await prisma.gitHubRepo.update({
-      where: { id: repo.id },
-      data: { lastSyncAt: new Date() },
-    });
-
+    const newCommits = await syncRepoCommits(req.params.repoId);
     res.json({ message: `${newCommits} novos commits sincronizados`, newCommits });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Sync error:', error);
-    res.status(500).json({ error: 'Erro ao sincronizar commits' });
+    res.status(500).json({ error: error.message || 'Erro ao sincronizar commits' });
   }
 });
 
@@ -189,6 +150,7 @@ githubRouter.post('/webhook', async (req, res) => {
 
       const repo = await prisma.gitHubRepo.findUnique({
         where: { repoFullName },
+        include: { project: { include: { organization: { select: { githubToken: true } } } } },
       });
 
       if (!repo) {
@@ -196,21 +158,26 @@ githubRouter.post('/webhook', async (req, res) => {
         return;
       }
 
+      const token = repo.project.organization?.githubToken || '';
+
       for (const commit of commits || []) {
         const existing = await prisma.gitCommit.findUnique({ where: { sha: commit.id } });
         if (existing) continue;
 
         // Fetch full commit details for diff
         let diff = '';
-        try {
-          const detail: any = await githubFetch(
-            `https://api.github.com/repos/${repoFullName}/commits/${commit.id}`
-          );
-          diff = (detail.files || [])
-            .map((f: any) => `${f.filename}: +${f.additions} -${f.deletions}\n${f.patch || ''}`)
-            .join('\n\n');
-        } catch {
-          // Ignore
+        if (token) {
+          try {
+            const detail: any = await githubFetch(
+              `https://api.github.com/repos/${repoFullName}/commits/${commit.id}`,
+              token
+            );
+            diff = (detail.files || [])
+              .map((f: any) => `${f.filename}: +${f.additions} -${f.deletions}\n${f.patch || ''}`)
+              .join('\n\n');
+          } catch {
+            // Ignore
+          }
         }
 
         const aiSummary = diff
@@ -231,7 +198,6 @@ githubRouter.post('/webhook', async (req, res) => {
           },
         });
 
-        // Create AI activity log
         if (aiSummary) {
           const devMember = await prisma.projectMember.findFirst({
             where: { projectId: repo.projectId },

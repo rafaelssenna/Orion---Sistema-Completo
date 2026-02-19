@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
-import { FolderOpen, Plus, Users, GitBranch, ChevronRight } from 'lucide-react';
+import { FolderOpen, Plus, Users, GitBranch, ChevronRight, Github } from 'lucide-react';
 import Link from 'next/link';
 
 export default function ProjectsPage() {
@@ -143,8 +143,26 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
   const [description, setDescription] = useState('');
   const [clientName, setClientName] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
+  const [selectedRepo, setSelectedRepo] = useState('');
+  const [availableRepos, setAvailableRepos] = useState<any[]>([]);
+  const [loadingRepos, setLoadingRepos] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const loadRepos = async () => {
+      setLoadingRepos(true);
+      try {
+        const repos = await api.getAvailableRepos();
+        setAvailableRepos(repos);
+      } catch {
+        // Token not configured - silently fail
+      } finally {
+        setLoadingRepos(false);
+      }
+    };
+    loadRepos();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,7 +170,13 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
     setError('');
 
     try {
-      await api.createProject({ name, description, clientName, priority });
+      await api.createProject({
+        name,
+        description,
+        clientName,
+        priority,
+        ...(selectedRepo && { repoFullName: selectedRepo }),
+      });
       onCreated();
     } catch (err: any) {
       setError(err.message);
@@ -209,6 +233,35 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
               <option value="HIGH">Alta</option>
               <option value="URGENT">Urgente</option>
             </select>
+          </div>
+
+          <div>
+            <label className="block text-sm text-orion-text-muted mb-1">
+              <Github size={14} className="inline mr-1" />
+              Repositório GitHub
+            </label>
+            {loadingRepos ? (
+              <div className="text-sm text-orion-text-muted py-2.5 px-4 bg-orion-surface-light rounded-lg border border-orion-border">
+                Carregando repositórios...
+              </div>
+            ) : availableRepos.length > 0 ? (
+              <select
+                value={selectedRepo}
+                onChange={e => setSelectedRepo(e.target.value)}
+                className="w-full bg-orion-surface-light border border-orion-border rounded-lg px-4 py-2.5 text-orion-text focus:outline-none focus:border-orion-primary"
+              >
+                <option value="">Nenhum (conectar depois)</option>
+                {availableRepos.filter(r => !r.connectedProjectId).map(repo => (
+                  <option key={repo.fullName} value={repo.fullName}>
+                    {repo.fullName}{repo.private ? ' (privado)' : ''}{repo.language ? ` - ${repo.language}` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-orion-text-muted py-2">
+                Configure o token GitHub nas Configurações para listar repositórios.
+              </p>
+            )}
           </div>
 
           <div className="flex gap-3 pt-2">
