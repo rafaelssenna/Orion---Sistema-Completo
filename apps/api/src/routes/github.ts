@@ -103,11 +103,45 @@ githubRouter.post('/connect-repo', authenticate, authorize('HEAD', 'ADMIN'), asy
 // POST /api/github/sync/:repoId - Sync commits from a repo
 githubRouter.post('/sync/:repoId', authenticate, authorize('HEAD', 'ADMIN'), async (req, res) => {
   try {
-    const newCommits = await syncRepoCommits(req.params.repoId);
+    const fullSync = req.query.full === 'true';
+    const newCommits = await syncRepoCommits(req.params.repoId, fullSync);
     res.json({ message: `${newCommits} novos commits sincronizados`, newCommits });
   } catch (error: any) {
     console.error('Sync error:', error);
     res.status(500).json({ error: error.message || 'Erro ao sincronizar commits' });
+  }
+});
+
+// POST /api/github/resync-all - Full resync all repos (fetch ALL commits from beginning)
+githubRouter.post('/resync-all', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
+  try {
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const orgFilter = currentUser?.organizationId ? { organizationId: currentUser.organizationId } : {};
+
+    const repos = await prisma.gitHubRepo.findMany({
+      where: { project: orgFilter },
+    });
+
+    // Fire-and-forget all syncs in parallel
+    let totalNew = 0;
+    const results = await Promise.allSettled(
+      repos.map(repo => syncRepoCommits(repo.id, true))
+    );
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') totalNew += result.value;
+    }
+
+    const failed = results.filter(r => r.status === 'rejected').length;
+    res.json({
+      message: `Resync completo: ${totalNew} novos commits de ${repos.length} repos`,
+      totalNew,
+      repos: repos.length,
+      failed,
+    });
+  } catch (error: any) {
+    console.error('Resync-all error:', error);
+    res.status(500).json({ error: error.message || 'Erro ao resincronizar' });
   }
 });
 

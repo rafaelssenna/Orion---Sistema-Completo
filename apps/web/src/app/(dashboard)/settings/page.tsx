@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const [githubToken, setGithubToken] = useState('');
   const [savingToken, setSavingToken] = useState(false);
   const [syncingRepo, setSyncingRepo] = useState<string | null>(null);
+  const [resyncingAll, setResyncingAll] = useState(false);
   const [message, setMessage] = useState('');
 
   // Register new user
@@ -71,6 +72,20 @@ export default function SettingsPage() {
       setMessage(`Erro ao sincronizar: ${err.message}`);
     } finally {
       setSyncingRepo(null);
+    }
+  };
+
+  const handleResyncAll = async () => {
+    setResyncingAll(true);
+    setMessage('');
+    try {
+      const result = await api.resyncAll();
+      setMessage(`Resync completo! ${result.totalNew} novos commits de ${result.repos} repositórios.${result.failed > 0 ? ` (${result.failed} falharam)` : ''}`);
+      loadData();
+    } catch (err: any) {
+      setMessage(`Erro: ${err.message}`);
+    } finally {
+      setResyncingAll(false);
     }
   };
 
@@ -165,7 +180,17 @@ export default function SettingsPage() {
         {/* Connected repos */}
         {projects.some(p => p.githubRepos?.length > 0) && (
           <div className="space-y-2">
-            <h3 className="text-sm font-medium text-orion-text-muted mb-2">Repositórios Conectados</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-orion-text-muted">Repositórios Conectados</h3>
+              <button
+                onClick={handleResyncAll}
+                disabled={resyncingAll}
+                className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-orion-primary/10 text-orion-primary hover:bg-orion-primary/20 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={14} className={resyncingAll ? 'animate-spin' : ''} />
+                {resyncingAll ? 'Resincronizando...' : 'Resincronizar Todos (completo)'}
+              </button>
+            </div>
             {projects.map(p => p.githubRepos?.map((repo: any) => (
               <div key={repo.id} className="flex items-center justify-between p-3 bg-orion-surface-light rounded-xl">
                 <div className="flex items-center gap-3">

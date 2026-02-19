@@ -149,8 +149,12 @@ class ApiClient {
     });
   }
 
-  syncRepo(repoId: string) {
-    return this.request<any>(`/github/sync/${repoId}`, { method: 'POST' });
+  syncRepo(repoId: string, full = false) {
+    return this.request<any>(`/github/sync/${repoId}${full ? '?full=true' : ''}`, { method: 'POST' });
+  }
+
+  resyncAll() {
+    return this.request<{ message: string; totalNew: number; repos: number; failed: number }>('/github/resync-all', { method: 'POST' });
   }
 
   getCommits(projectId: string) {

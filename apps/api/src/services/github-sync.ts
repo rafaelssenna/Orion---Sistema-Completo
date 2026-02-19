@@ -25,7 +25,7 @@ export async function getOrgGitHubToken(userId: string): Promise<string> {
   return token;
 }
 
-export async function syncRepoCommits(repoId: string): Promise<number> {
+export async function syncRepoCommits(repoId: string, fullSync = false): Promise<number> {
   const repo = await prisma.gitHubRepo.findUnique({
     where: { id: repoId },
     include: { project: { include: { organization: { select: { githubToken: true } } } } },
@@ -36,7 +36,10 @@ export async function syncRepoCommits(repoId: string): Promise<number> {
   const token = repo.project.organization?.githubToken;
   if (!token) throw new Error('Token GitHub não configurado na organização');
 
-  const since = repo.lastSyncAt?.toISOString() || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  // Full sync: fetch ALL commits from the beginning. Normal sync: only since last sync.
+  const sinceParam = fullSync
+    ? ''
+    : `since=${repo.lastSyncAt?.toISOString() || new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString()}&`;
 
   // Paginate through all commits
   let allCommits: any[] = [];
@@ -45,7 +48,7 @@ export async function syncRepoCommits(repoId: string): Promise<number> {
 
   while (hasMore) {
     const commits: any[] = await githubFetch(
-      `https://api.github.com/repos/${repo.repoFullName}/commits?since=${since}&per_page=100&page=${page}`,
+      `https://api.github.com/repos/${repo.repoFullName}/commits?${sinceParam}per_page=100&page=${page}`,
       token
     );
     allCommits = allCommits.concat(commits);

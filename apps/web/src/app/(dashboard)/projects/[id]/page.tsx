@@ -113,10 +113,10 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const handleSync = async (repoId: string) => {
+  const handleSync = async (repoId: string, full = false) => {
     setSyncingRepo(repoId);
     try {
-      const result = await api.syncRepo(repoId);
+      const result = await api.syncRepo(repoId, full);
       setMessage(`Sincronizado! ${result.newCommits} novos commits.`);
       loadProject();
     } catch (err: any) {
@@ -292,14 +292,23 @@ export default function ProjectDetailPage() {
                   <GitBranch size={16} className="text-orion-primary" />
                   <span className="text-sm font-medium">{repo.repoFullName}</span>
                 </div>
-                <button
-                  onClick={() => handleSync(repo.id)}
-                  disabled={syncingRepo === repo.id}
-                  className="flex items-center gap-1 text-sm text-orion-primary hover:text-orion-primary-light disabled:opacity-50"
-                >
-                  <RefreshCw size={14} className={syncingRepo === repo.id ? 'animate-spin' : ''} />
-                  {syncingRepo === repo.id ? 'Sincronizando...' : 'Sincronizar'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleSync(repo.id, true)}
+                    disabled={syncingRepo === repo.id}
+                    className="flex items-center gap-1 text-xs text-orion-text-muted hover:text-orion-primary disabled:opacity-50"
+                  >
+                    Sync Completo
+                  </button>
+                  <button
+                    onClick={() => handleSync(repo.id)}
+                    disabled={syncingRepo === repo.id}
+                    className="flex items-center gap-1 text-sm text-orion-primary hover:text-orion-primary-light disabled:opacity-50"
+                  >
+                    <RefreshCw size={14} className={syncingRepo === repo.id ? 'animate-spin' : ''} />
+                    {syncingRepo === repo.id ? 'Sincronizando...' : 'Sincronizar'}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
