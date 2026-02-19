@@ -82,6 +82,21 @@ class ApiClient {
     return this.request<any>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 
+  deleteProject(id: string) {
+    return this.request<any>(`/projects/${id}`, { method: 'DELETE' });
+  }
+
+  addProjectMember(projectId: string, userId: string, role?: string) {
+    return this.request<any>(`/projects/${projectId}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ userId, role }),
+    });
+  }
+
+  removeProjectMember(projectId: string, userId: string) {
+    return this.request<any>(`/projects/${projectId}/members/${userId}`, { method: 'DELETE' });
+  }
+
   // Tasks
   getTasks(params?: { projectId?: string; status?: string; assigneeId?: string }) {
     const query = new URLSearchParams(params as any).toString();

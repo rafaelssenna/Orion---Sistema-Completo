@@ -82,6 +82,7 @@ model User {
   chatMessages    ChatMessage[]
   createdEvents   CalendarEvent[]    @relation("EventCreator")
   attendingEvents CalendarEventAttendee[]
+  gitCommits      GitCommit[]
 
   @@map("users")
 }
@@ -216,8 +217,11 @@ model GitCommit {
   id           String   @id @default(cuid())
   repoId       String
   projectId    String
+  authorId     String?  // Matched Orion user
   sha          String   @unique
   message      String
+  authorEmail  String?  // Email from GitHub commit
+  authorName   String?  // Name from GitHub commit
   aiSummary    String?  // Gemini-generated summary
   filesChanged Int      @default(0)
   additions    Int      @default(0)
@@ -228,6 +232,7 @@ model GitCommit {
   // Relations
   repo    GitHubRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
   project Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author  User?      @relation(fields: [authorId], references: [id], onDelete: SetNull)
 
   @@map("git_commits")
 }

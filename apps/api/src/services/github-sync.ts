@@ -42,6 +42,12 @@ export async function syncRepoCommits(repoId: string): Promise<number> {
     token
   );
 
+  // Pre-load project members with emails for author matching
+  const projectMembers = await prisma.projectMember.findMany({
+    where: { projectId: repo.projectId },
+    include: { user: { select: { id: true, email: true, name: true } } },
+  });
+
   let newCommits = 0;
 
   for (const commit of commits) {
@@ -65,12 +71,22 @@ export async function syncRepoCommits(repoId: string): Promise<number> {
       ? await analyzeCommitDiff(commit.commit.message, diff)
       : null;
 
+    // Match commit author to Orion user by email
+    const commitEmail = commit.commit.author?.email || commit.commit.committer?.email || '';
+    const commitName = commit.commit.author?.name || commit.commit.committer?.name || '';
+    const matchedMember = projectMembers.find(
+      m => m.user.email.toLowerCase() === commitEmail.toLowerCase()
+    );
+
     await prisma.gitCommit.create({
       data: {
         repoId: repo.id,
         projectId: repo.projectId,
+        authorId: matchedMember?.user.id || null,
         sha: commit.sha,
         message: commit.commit.message,
+        authorEmail: commitEmail || null,
+        authorName: commitName || null,
         aiSummary,
         filesChanged: commit.files?.length || 0,
         additions: commit.stats?.additions || 0,
@@ -79,21 +95,18 @@ export async function syncRepoCommits(repoId: string): Promise<number> {
       },
     });
 
-    if (aiSummary) {
-      const devMember = await prisma.projectMember.findFirst({
-        where: { projectId: repo.projectId },
+    // Attribute activity to matched dev, or fallback to first member
+    const activityUserId = matchedMember?.user.id || projectMembers[0]?.userId;
+    if (aiSummary && activityUserId) {
+      await prisma.activityLog.create({
+        data: {
+          userId: activityUserId,
+          projectId: repo.projectId,
+          description: aiSummary,
+          type: 'AI_SUMMARY',
+          date: new Date(commit.commit.committer.date),
+        },
       });
-      if (devMember) {
-        await prisma.activityLog.create({
-          data: {
-            userId: devMember.userId,
-            projectId: repo.projectId,
-            description: aiSummary,
-            type: 'AI_SUMMARY',
-            date: new Date(commit.commit.committer.date),
-          },
-        });
-      }
     }
 
     newCommits++;

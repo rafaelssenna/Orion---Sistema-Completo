@@ -67,7 +67,7 @@ export default function ProjectsPage() {
         {projects.map((project) => (
           <Link
             key={project.id}
-            href={`/kanban?projectId=${project.id}`}
+            href={`/projects/${project.id}`}
             className="bg-orion-surface rounded-2xl border border-orion-border p-6 hover:border-orion-primary/50 transition-all group"
           >
             <div className="flex items-start justify-between mb-4">

@@ -160,6 +160,12 @@ githubRouter.post('/webhook', async (req, res) => {
 
       const token = repo.project.organization?.githubToken || '';
 
+      // Pre-load project members for author matching
+      const projectMembers = await prisma.projectMember.findMany({
+        where: { projectId: repo.projectId },
+        include: { user: { select: { id: true, email: true } } },
+      });
+
       for (const commit of commits || []) {
         const existing = await prisma.gitCommit.findUnique({ where: { sha: commit.id } });
         if (existing) continue;
@@ -184,12 +190,22 @@ githubRouter.post('/webhook', async (req, res) => {
           ? await analyzeCommitDiff(commit.message, diff)
           : null;
 
+        // Match commit author to Orion user
+        const commitEmail = commit.author?.email || '';
+        const commitName = commit.author?.name || '';
+        const matchedMember = projectMembers.find(
+          m => m.user.email.toLowerCase() === commitEmail.toLowerCase()
+        );
+
         await prisma.gitCommit.create({
           data: {
             repoId: repo.id,
             projectId: repo.projectId,
+            authorId: matchedMember?.user.id || null,
             sha: commit.id,
             message: commit.message,
+            authorEmail: commitEmail || null,
+            authorName: commitName || null,
             aiSummary,
             filesChanged: (commit.added?.length || 0) + (commit.modified?.length || 0) + (commit.removed?.length || 0),
             additions: 0,
@@ -198,21 +214,17 @@ githubRouter.post('/webhook', async (req, res) => {
           },
         });
 
-        if (aiSummary) {
-          const devMember = await prisma.projectMember.findFirst({
-            where: { projectId: repo.projectId },
+        const activityUserId = matchedMember?.user.id || projectMembers[0]?.userId;
+        if (aiSummary && activityUserId) {
+          await prisma.activityLog.create({
+            data: {
+              userId: activityUserId,
+              projectId: repo.projectId,
+              description: aiSummary,
+              type: 'AI_SUMMARY',
+              date: new Date(commit.timestamp),
+            },
           });
-          if (devMember) {
-            await prisma.activityLog.create({
-              data: {
-                userId: devMember.userId,
-                projectId: repo.projectId,
-                description: aiSummary,
-                type: 'AI_SUMMARY',
-                date: new Date(commit.timestamp),
-              },
-            });
-          }
         }
       }
 
