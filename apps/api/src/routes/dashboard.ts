@@ -464,12 +464,20 @@ dashboardRouter.get('/strategic-metrics', authenticate, authorize('HEAD', 'ADMIN
     // Group commits
     const commitsByProject = groupCommitsByProject(commits);
     const prevCommitsByProject = groupCommitsByProject(prevCommitsRaw);
-    const totalEstimatedMinutes = estimateMinutesFromCommits(commits);
+
+    // Calculate minutes per project first, then sum for real total
+    // (estimating all commits together merges cross-project sessions, breaking percentages)
+    const projectMinutesMap = new Map<string, number>();
+    for (const project of projects) {
+      const pCommits = commitsByProject.get(project.id) || [];
+      projectMinutesMap.set(project.id, estimateMinutesFromCommits(pCommits));
+    }
+    const totalEstimatedMinutes = Array.from(projectMinutesMap.values()).reduce((a, b) => a + b, 0);
 
     // ---- SECTION 1: Project Effort ----
     const projectEffort = projects.map(project => {
       const pCommits = commitsByProject.get(project.id) || [];
-      const estimatedMinutes = estimateMinutesFromCommits(pCommits);
+      const estimatedMinutes = projectMinutesMap.get(project.id) || 0;
       const totalAdditions = pCommits.reduce((s, c) => s + c.additions, 0);
       const totalDeletions = pCommits.reduce((s, c) => s + c.deletions, 0);
       const totalFilesChanged = pCommits.reduce((s, c) => s + c.filesChanged, 0);
@@ -523,9 +531,8 @@ dashboardRouter.get('/strategic-metrics', authenticate, authorize('HEAD', 'ADMIN
         .map(p => p.id);
 
       const devCommits = commits.filter(c => devProjectIds.includes(c.projectId));
-      const totalMinutes = estimateMinutesFromCommits(devCommits);
 
-      // Per-project breakdown
+      // Per-project breakdown - calculate per-project minutes first, then sum
       const devByProject = groupCommitsByProject(devCommits);
       const projectBreakdown = Array.from(devByProject.entries())
         .map(([pid, pCommits]) => {
@@ -536,10 +543,15 @@ dashboardRouter.get('/strategic-metrics', authenticate, authorize('HEAD', 'ADMIN
             projectName: project?.name || 'Desconhecido',
             commits: pCommits.length,
             estimatedMinutes: mins,
-            percentage: totalMinutes > 0 ? Math.round((mins / totalMinutes) * 100) : 0,
+            percentage: 0, // filled below
           };
         })
         .sort((a, b) => b.commits - a.commits);
+
+      const totalMinutes = projectBreakdown.reduce((s, p) => s + p.estimatedMinutes, 0);
+      for (const pb of projectBreakdown) {
+        pb.percentage = totalMinutes > 0 ? Math.round((pb.estimatedMinutes / totalMinutes) * 100) : 0;
+      }
 
       // Daily breakdown
       const devByDay = groupCommitsByDay(devCommits);
@@ -786,13 +798,20 @@ dashboardRouter.get('/dev-time-management', authenticate, async (req: AuthReques
       })
     );
 
-    const totalEstimatedMinutes = estimateMinutesFromCommits(commits);
-
     // ---- Project Distribution ----
+    // Calculate minutes PER PROJECT first, then sum for the real total
+    // (estimating all commits together would merge cross-project sessions and break percentages)
     const byProject = groupCommitsByProject(commits);
+    const projectMinutes = new Map<string, number>();
+    for (const m of activeProjects) {
+      const pCommits = byProject.get(m.project.id) || [];
+      projectMinutes.set(m.project.id, estimateMinutesFromCommits(pCommits));
+    }
+    const totalEstimatedMinutes = Array.from(projectMinutes.values()).reduce((a, b) => a + b, 0);
+
     const projectDistribution = activeProjects.map(m => {
       const pCommits = byProject.get(m.project.id) || [];
-      const mins = estimateMinutesFromCommits(pCommits);
+      const mins = projectMinutes.get(m.project.id) || 0;
       const allTime = allTimeLastCommits.find(c => c.projectId === m.project.id);
       const lastCommitAt = allTime?.last?.committedAt || null;
       const daysSince = lastCommitAt
