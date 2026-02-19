@@ -141,6 +141,10 @@ class ApiClient {
     return this.request<any[]>(`/dashboard/hours-comparison?${params}`);
   }
 
+  getDevProductivity() {
+    return this.request<any[]>('/dashboard/dev-productivity');
+  }
+
   // GitHub
   connectRepo(projectId: string, repoFullName: string) {
     return this.request<any>('/github/connect-repo', {

@@ -199,6 +199,128 @@ dashboardRouter.get('/personal', authenticate, async (req: AuthRequest, res) => 
   }
 });
 
+// GET /api/dashboard/dev-productivity - Dev work analysis based on commits
+dashboardRouter.get('/dev-productivity', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
+  try {
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const orgFilter = currentUser?.organizationId ? { organizationId: currentUser.organizationId } : {};
+
+    // Get all users from the org (DEV + ADMIN)
+    const users = await prisma.user.findMany({
+      where: { ...orgFilter, role: { in: ['DEV', 'ADMIN'] } },
+      select: { id: true, name: true, email: true, role: true, avatarUrl: true },
+    });
+
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const devStats = await Promise.all(
+      users.map(async (user) => {
+        // ALL commits ever by this user (matched by authorId or email)
+        const allCommits = await prisma.gitCommit.findMany({
+          where: {
+            OR: [
+              { authorId: user.id },
+              { authorEmail: user.email },
+            ],
+          },
+          select: {
+            sha: true,
+            committedAt: true,
+            filesChanged: true,
+            additions: true,
+            deletions: true,
+            projectId: true,
+            message: true,
+          },
+          orderBy: { committedAt: 'asc' },
+        });
+
+        // Commits this week
+        const commitsThisWeek = allCommits.filter(c => c.committedAt >= weekAgo);
+        // Commits this month
+        const commitsThisMonth = allCommits.filter(c => c.committedAt >= monthAgo);
+
+        // Total lines changed
+        const totalAdditions = allCommits.reduce((s, c) => s + c.additions, 0);
+        const totalDeletions = allCommits.reduce((s, c) => s + c.deletions, 0);
+        const totalFilesChanged = allCommits.reduce((s, c) => s + c.filesChanged, 0);
+
+        // Commits per project
+        const projectMap = new Map<string, number>();
+        for (const c of allCommits) {
+          projectMap.set(c.projectId, (projectMap.get(c.projectId) || 0) + 1);
+        }
+
+        const projectIds = Array.from(projectMap.keys());
+        const projectNames = await prisma.project.findMany({
+          where: { id: { in: projectIds } },
+          select: { id: true, name: true },
+        });
+        const nameMap = new Map(projectNames.map(p => [p.id, p.name]));
+
+        const commitsByProject = Array.from(projectMap.entries())
+          .map(([pid, count]) => ({ projectName: nameMap.get(pid) || 'Desconhecido', commits: count }))
+          .sort((a, b) => b.commits - a.commits);
+
+        // Work hours analysis (based on commit timestamps)
+        const hourDistribution = new Array(24).fill(0);
+        const dayDistribution = new Array(7).fill(0); // 0=Sun, 6=Sat
+        const activeDays = new Set<string>();
+
+        for (const c of allCommits) {
+          const d = new Date(c.committedAt);
+          hourDistribution[d.getUTCHours()]++;
+          dayDistribution[d.getUTCDay()]++;
+          activeDays.add(d.toISOString().split('T')[0]);
+        }
+
+        // Weekly commit history (last 12 weeks)
+        const weeklyHistory: { week: string; commits: number }[] = [];
+        for (let i = 11; i >= 0; i--) {
+          const weekStart = new Date(now.getTime() - (i + 1) * 7 * 24 * 60 * 60 * 1000);
+          const weekEnd = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+          const count = allCommits.filter(c => c.committedAt >= weekStart && c.committedAt < weekEnd).length;
+          weeklyHistory.push({
+            week: weekStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+            commits: count,
+          });
+        }
+
+        // First and last commit timestamps
+        const firstCommit = allCommits.length > 0 ? allCommits[0].committedAt : null;
+        const lastCommit = allCommits.length > 0 ? allCommits[allCommits.length - 1].committedAt : null;
+
+        return {
+          user: { id: user.id, name: user.name, role: user.role, avatarUrl: user.avatarUrl },
+          totalCommits: allCommits.length,
+          commitsThisWeek: commitsThisWeek.length,
+          commitsThisMonth: commitsThisMonth.length,
+          totalAdditions,
+          totalDeletions,
+          totalFilesChanged,
+          activeDays: activeDays.size,
+          commitsByProject,
+          hourDistribution,
+          dayDistribution,
+          weeklyHistory,
+          firstCommit,
+          lastCommit,
+        };
+      })
+    );
+
+    // Sort by total commits desc
+    devStats.sort((a, b) => b.totalCommits - a.totalCommits);
+
+    res.json(devStats);
+  } catch (error) {
+    console.error('Dev productivity error:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // GET /api/dashboard/hours-comparison?from=xxx&to=xxx
 dashboardRouter.get('/hours-comparison', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
