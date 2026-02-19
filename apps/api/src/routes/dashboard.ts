@@ -5,14 +5,17 @@ import { authenticate, authorize, AuthRequest } from '../middleware/auth.js';
 export const dashboardRouter = Router();
 
 // GET /api/dashboard/overview - Main dashboard for HEAD
-dashboardRouter.get('/overview', authenticate, authorize('HEAD', 'ADMIN'), async (_req, res) => {
+dashboardRouter.get('/overview', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Get all devs
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const orgFilter = currentUser?.organizationId ? { organizationId: currentUser.organizationId } : {};
+
+    // Get all devs from same organization
     const devs = await prisma.user.findMany({
-      where: { role: 'DEV' },
+      where: { role: 'DEV', ...orgFilter },
       select: { id: true, name: true, avatarUrl: true },
     });
 
@@ -39,9 +42,9 @@ dashboardRouter.get('/overview', authenticate, authorize('HEAD', 'ADMIN'), async
       })
     );
 
-    // Projects summary
+    // Projects summary (same organization)
     const projects = await prisma.project.findMany({
-      where: { status: 'ACTIVE' },
+      where: { status: 'ACTIVE', ...orgFilter },
       include: {
         members: { include: { user: { select: { id: true, name: true } } } },
         _count: { select: { tasks: true, gitCommits: true } },
@@ -197,14 +200,17 @@ dashboardRouter.get('/personal', authenticate, async (req: AuthRequest, res) => 
 });
 
 // GET /api/dashboard/hours-comparison?from=xxx&to=xxx
-dashboardRouter.get('/hours-comparison', authenticate, authorize('HEAD', 'ADMIN'), async (req, res) => {
+dashboardRouter.get('/hours-comparison', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
     const { from, to } = req.query;
     const startDate = from ? new Date(from as string) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const endDate = to ? new Date(to as string) : new Date();
 
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const orgFilter = currentUser?.organizationId ? { organizationId: currentUser.organizationId } : {};
+
     const devs = await prisma.user.findMany({
-      where: { role: 'DEV' },
+      where: { role: 'DEV', ...orgFilter },
       select: { id: true, name: true },
     });
 

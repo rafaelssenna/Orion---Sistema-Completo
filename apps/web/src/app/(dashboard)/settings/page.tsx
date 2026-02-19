@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { Github, RefreshCw, Link as LinkIcon, Users, Plus } from 'lucide-react';
+import { Github, RefreshCw, Link as LinkIcon, Users, Plus, Building2, Trash2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
   const [projects, setProjects] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
+  const [org, setOrg] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   // GitHub connect
@@ -35,8 +35,8 @@ export default function SettingsPage() {
       const projs = await api.getProjects();
       setProjects(projs);
       if (user?.role === 'HEAD' || user?.role === 'ADMIN') {
-        const usrs = await api.getUsers();
-        setUsers(usrs);
+        const orgData = await api.getMyOrganization();
+        setOrg(orgData);
       }
     } catch (err) {
       console.error(err);
@@ -81,8 +81,8 @@ export default function SettingsPage() {
     setMessage('');
 
     try {
-      await api.register(newName, newEmail, newPassword, newRole);
-      setMessage(`Usuário ${newName} criado com sucesso!`);
+      await api.addOrgMember(newName, newEmail, newPassword, newRole);
+      setMessage(`Membro ${newName} adicionado com sucesso!`);
       setNewName('');
       setNewEmail('');
       setNewPassword('');
@@ -92,6 +92,17 @@ export default function SettingsPage() {
       setMessage(`Erro: ${err.message}`);
     } finally {
       setRegistering(false);
+    }
+  };
+
+  const handleRemoveMember = async (userId: string, name: string) => {
+    if (!confirm(`Remover ${name} da organização?`)) return;
+    try {
+      await api.removeOrgMember(userId);
+      setMessage(`${name} removido da organização`);
+      loadData();
+    } catch (err: any) {
+      setMessage(`Erro: ${err.message}`);
     }
   };
 
@@ -173,6 +184,19 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      {/* Organization Info */}
+      {org && (
+        <section className="bg-orion-surface rounded-2xl border border-orion-border p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Building2 size={24} className="text-orion-accent" />
+            <div>
+              <h2 className="text-lg font-semibold">{org.name}</h2>
+              <p className="text-xs text-orion-text-muted">/{org.slug} &middot; {org.users?.length || 0} membros</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Team Management (HEAD only) */}
       {user?.role === 'HEAD' && (
         <section className="bg-orion-surface rounded-2xl border border-orion-border p-6">
@@ -198,17 +222,16 @@ export default function SettingsPage() {
                 <select value={newRole} onChange={e => setNewRole(e.target.value)} className="bg-orion-surface border border-orion-border rounded-lg px-3 py-2 text-sm text-orion-text focus:outline-none focus:border-orion-primary">
                   <option value="DEV">Dev</option>
                   <option value="ADMIN">Admin</option>
-                  <option value="HEAD">Head</option>
                 </select>
               </div>
               <button type="submit" disabled={registering} className="bg-orion-primary text-white text-sm px-4 py-2 rounded-lg disabled:opacity-50">
-                {registering ? 'Criando...' : 'Criar Membro'}
+                {registering ? 'Adicionando...' : 'Adicionar Membro'}
               </button>
             </form>
           )}
 
           <div className="space-y-2">
-            {users.map(u => (
+            {org?.users?.map((u: any) => (
               <div key={u.id} className="flex items-center gap-3 p-3 bg-orion-surface-light rounded-xl">
                 <div className="w-9 h-9 rounded-full bg-orion-primary/20 flex items-center justify-center text-orion-primary text-sm font-bold">
                   {u.name.charAt(0)}
@@ -224,6 +247,15 @@ export default function SettingsPage() {
                 }`}>
                   {u.role}
                 </span>
+                {u.id !== user?.id && (
+                  <button
+                    onClick={() => handleRemoveMember(u.id, u.name)}
+                    className="text-orion-text-muted hover:text-orion-danger transition-colors p-1"
+                    title="Remover membro"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             ))}
           </div>

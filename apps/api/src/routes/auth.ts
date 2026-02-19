@@ -38,7 +38,7 @@ authRouter.post('/register', async (req, res) => {
         passwordHash,
         role: data.role,
       },
-      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, organizationId: true, createdAt: true },
     });
 
     const token = generateToken({ id: user.id, email: user.email, role: user.role, name: user.name });
@@ -73,7 +73,7 @@ authRouter.post('/login', async (req, res) => {
     const token = generateToken({ id: user.id, email: user.email, role: user.role, name: user.name });
 
     res.json({
-      user: { id: user.id, name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl },
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, avatarUrl: user.avatarUrl, organizationId: user.organizationId },
       token,
     });
   } catch (error) {
@@ -90,7 +90,7 @@ authRouter.get('/me', authenticate, async (req: AuthRequest, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      select: { id: true, name: true, email: true, role: true, avatarUrl: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, avatarUrl: true, organizationId: true, createdAt: true },
     });
 
     if (!user) {

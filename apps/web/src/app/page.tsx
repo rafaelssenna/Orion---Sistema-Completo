@@ -10,7 +10,13 @@ export default function Home() {
 
   useEffect(() => {
     if (!loading) {
-      router.replace(user ? '/dashboard' : '/login');
+      if (!user) {
+        router.replace('/login');
+      } else if (user.role === 'HEAD' && !user.organizationId) {
+        router.replace('/onboarding');
+      } else {
+        router.replace('/dashboard');
+      }
     }
   }, [user, loading, router]);
 

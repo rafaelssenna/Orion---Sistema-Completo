@@ -41,19 +41,38 @@ enum ActivityType {
   AI_SUMMARY
 }
 
+// ============== ORGANIZATION ==============
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users    User[]
+  projects Project[]
+
+  @@map("organizations")
+}
+
 // ============== USERS ==============
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(DEV)
-  avatarUrl    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  passwordHash   String
+  role           Role     @default(DEV)
+  avatarUrl      String?
+  organizationId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   // Relations
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   projectMembers  ProjectMember[]
   assignedTasks   Task[]
   activityLogs    ActivityLog[]
@@ -69,18 +88,20 @@ model User {
 // ============== PROJECTS ==============
 
 model Project {
-  id          String        @id @default(cuid())
-  name        String
-  description String?
-  clientName  String?
-  status      ProjectStatus @default(ACTIVE)
-  priority    Priority      @default(MEDIUM)
-  startDate   DateTime?
-  deadline    DateTime?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id             String        @id @default(cuid())
+  name           String
+  description    String?
+  clientName     String?
+  status         ProjectStatus @default(ACTIVE)
+  priority       Priority      @default(MEDIUM)
+  startDate      DateTime?
+  deadline       DateTime?
+  organizationId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   // Relations
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   members      ProjectMember[]
   tasks        Task[]
   activityLogs ActivityLog[]

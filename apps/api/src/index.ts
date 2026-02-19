@@ -9,6 +9,7 @@ import { dashboardRouter } from './routes/dashboard.js';
 import { githubRouter } from './routes/github.js';
 import { notificationRouter } from './routes/notifications.js';
 import { userRouter } from './routes/users.js';
+import { organizationRouter } from './routes/organizations.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -27,6 +28,7 @@ app.use('/api/time-entries', timeEntryRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/github', githubRouter);
 app.use('/api/notifications', notificationRouter);
+app.use('/api/organizations', organizationRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {

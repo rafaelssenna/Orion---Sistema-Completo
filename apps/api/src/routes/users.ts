@@ -4,10 +4,16 @@ import { authenticate, authorize, AuthRequest } from '../middleware/auth.js';
 
 export const userRouter = Router();
 
-// GET /api/users - List all users (HEAD only)
-userRouter.get('/', authenticate, authorize('HEAD', 'ADMIN'), async (_req, res) => {
+// GET /api/users - List users from same organization (HEAD/ADMIN only)
+userRouter.get('/', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const where = currentUser?.organizationId
+      ? { organizationId: currentUser.organizationId }
+      : {};
+
     const users = await prisma.user.findMany({
+      where,
       select: { id: true, name: true, email: true, role: true, avatarUrl: true, createdAt: true },
       orderBy: { name: 'asc' },
     });

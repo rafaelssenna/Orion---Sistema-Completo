@@ -158,6 +158,36 @@ class ApiClient {
   markAsRead(id: string) {
     return this.request<any>(`/notifications/${id}/read`, { method: 'PUT' });
   }
+
+  // Organizations
+  getMyOrganization() {
+    return this.request<any>('/organizations/mine');
+  }
+
+  createOrganization(name: string, slug: string) {
+    return this.request<any>('/organizations', {
+      method: 'POST',
+      body: JSON.stringify({ name, slug }),
+    });
+  }
+
+  updateOrganization(data: { name?: string; logoUrl?: string }) {
+    return this.request<any>('/organizations/mine', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  addOrgMember(name: string, email: string, password: string, role: string) {
+    return this.request<any>('/organizations/members', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password, role }),
+    });
+  }
+
+  removeOrgMember(userId: string) {
+    return this.request<any>(`/organizations/members/${userId}`, { method: 'DELETE' });
+  }
 }
 
 export const api = new ApiClient();

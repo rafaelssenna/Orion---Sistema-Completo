@@ -9,6 +9,7 @@ interface User {
   email: string;
   role: 'HEAD' | 'ADMIN' | 'DEV';
   avatarUrl?: string;
+  organizationId?: string | null;
 }
 
 interface AuthContextType {
@@ -17,6 +18,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string, role?: string) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,15 +27,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const refreshUser = async () => {
+    try {
+      const userData = await api.getMe();
+      setUser(userData);
+    } catch {
+      api.setToken(null);
+      setUser(null);
+    }
+  };
+
   useEffect(() => {
     const token = api.getToken();
     if (token) {
-      api.getMe()
-        .then(setUser)
-        .catch(() => {
-          api.setToken(null);
-        })
-        .finally(() => setLoading(false));
+      refreshUser().finally(() => setLoading(false));
     } else {
       setLoading(false);
     }
@@ -57,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

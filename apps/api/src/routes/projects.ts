@@ -28,9 +28,12 @@ const updateProjectSchema = z.object({
 // GET /api/projects
 projectRouter.get('/', authenticate, async (req: AuthRequest, res) => {
   try {
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const orgFilter = currentUser?.organizationId ? { organizationId: currentUser.organizationId } : {};
+
     const where = req.user!.role === 'DEV'
-      ? { members: { some: { userId: req.user!.id } } }
-      : {};
+      ? { ...orgFilter, members: { some: { userId: req.user!.id } } }
+      : orgFilter;
 
     const projects = await prisma.project.findMany({
       where,
@@ -79,6 +82,7 @@ projectRouter.get('/:id', authenticate, async (req: AuthRequest, res) => {
 projectRouter.post('/', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
     const data = createProjectSchema.parse(req.body);
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
 
     const project = await prisma.project.create({
       data: {
@@ -88,6 +92,7 @@ projectRouter.post('/', authenticate, authorize('HEAD', 'ADMIN'), async (req: Au
         priority: data.priority,
         startDate: data.startDate ? new Date(data.startDate) : undefined,
         deadline: data.deadline ? new Date(data.deadline) : undefined,
+        organizationId: currentUser?.organizationId || undefined,
         members: {
           create: data.memberIds.map(userId => ({ userId, role: 'MEMBER' })),
         },

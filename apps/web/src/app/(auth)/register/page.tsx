@@ -3,14 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { api } from '@/lib/api';
 
-export default function LoginPage() {
+export default function RegisterPage() {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { register } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -19,16 +19,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      await login(email, password);
-      // Check if user needs onboarding (HEAD without org)
-      const me = await api.getMe();
-      if (me.role === 'HEAD' && !me.organizationId) {
-        router.push('/onboarding');
-      } else {
-        router.push('/dashboard');
-      }
+      await register(name, email, password, 'HEAD');
+      router.push('/onboarding');
     } catch (err: any) {
-      setError(err.message || 'Erro ao fazer login');
+      setError(err.message || 'Erro ao criar conta');
     } finally {
       setLoading(false);
     }
@@ -42,12 +36,12 @@ export default function LoginPage() {
           <h1 className="text-5xl font-bold bg-gradient-to-r from-orion-primary to-orion-purple bg-clip-text text-transparent">
             Orion
           </h1>
-          <p className="text-orion-text-muted mt-2">Sistema de Gestão de Projetos</p>
+          <p className="text-orion-text-muted mt-2">Crie sua conta de Head</p>
         </div>
 
-        {/* Login Form */}
+        {/* Register Form */}
         <form onSubmit={handleSubmit} className="bg-orion-surface rounded-2xl p-8 border border-orion-border">
-          <h2 className="text-xl font-semibold mb-6">Entrar</h2>
+          <h2 className="text-xl font-semibold mb-6">Criar Conta</h2>
 
           {error && (
             <div className="bg-orion-danger/10 border border-orion-danger/30 text-orion-danger rounded-lg p-3 mb-4 text-sm">
@@ -56,6 +50,18 @@ export default function LoginPage() {
           )}
 
           <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-orion-text-muted mb-1">Seu Nome</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-orion-surface-light border border-orion-border rounded-lg px-4 py-3 text-orion-text focus:outline-none focus:border-orion-primary transition-colors"
+                placeholder="João Silva"
+                required
+              />
+            </div>
+
             <div>
               <label className="block text-sm text-orion-text-muted mb-1">Email</label>
               <input
@@ -75,8 +81,9 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-orion-surface-light border border-orion-border rounded-lg px-4 py-3 text-orion-text focus:outline-none focus:border-orion-primary transition-colors"
-                placeholder="••••••"
+                placeholder="Mínimo 6 caracteres"
                 required
+                minLength={6}
               />
             </div>
 
@@ -85,19 +92,16 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full bg-orion-primary hover:bg-orion-primary-light text-white rounded-lg py-3 font-medium transition-colors disabled:opacity-50"
             >
-              {loading ? 'Entrando...' : 'Entrar'}
+              {loading ? 'Criando...' : 'Criar Conta'}
             </button>
           </div>
         </form>
 
         <p className="text-center text-orion-text-muted text-sm mt-4">
-          É o Head da empresa?{' '}
-          <a href="/register" className="text-orion-primary hover:text-orion-primary-light transition-colors">
-            Criar conta
+          Já tem conta?{' '}
+          <a href="/login" className="text-orion-primary hover:text-orion-primary-light transition-colors">
+            Fazer login
           </a>
-        </p>
-        <p className="text-center text-orion-text-muted text-xs mt-2">
-          Orion v1.0 &middot; Gestão inteligente de equipes
         </p>
       </div>
     </div>
