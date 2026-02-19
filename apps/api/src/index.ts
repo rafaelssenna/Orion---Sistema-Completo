@@ -30,7 +30,7 @@ app.use('/api/github', githubRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/organizations', organizationRouter);
 
-// Health check
+// Health check endpoint
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
