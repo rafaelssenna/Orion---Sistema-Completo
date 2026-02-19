@@ -23,6 +23,7 @@ export default function MetricsPage() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('week');
   const [expandedStalled, setExpandedStalled] = useState<string | null>(null);
+  const [expandedDev, setExpandedDev] = useState<string | null>(null);
 
   useEffect(() => {
     if (user?.role !== 'HEAD' && user?.role !== 'ADMIN') return;
@@ -271,58 +272,142 @@ export default function MetricsPage() {
       <section className="bg-orion-surface rounded-2xl border border-orion-border p-6">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
           <Clock size={20} className="text-orion-accent" />
-          Tempo por Desenvolvedor
+          Distribuição de Tempo por Desenvolvedor
         </h2>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Stacked Bar */}
-          {devBarData.length > 0 && (
-            <div>
-              <h3 className="text-sm text-orion-text-muted mb-3">Horas estimadas por projeto</h3>
-              <div style={{ height: 300 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={devBarData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
-                    <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} />
-                    <YAxis stroke="#94a3b8" fontSize={12} />
-                    <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [`${v}h`, '']} />
-                    {Array.from(allProjectNamesFromDevs).map((name, i) => (
-                      <Bar key={name} dataKey={name} stackId="a" fill={COLORS[i % COLORS.length]} />
-                    ))}
-                    <Legend />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {/* Per-dev pie charts */}
-          <div className="space-y-4">
-            <h3 className="text-sm text-orion-text-muted mb-3">Distribuição % por dev</h3>
-            {devTimeDistribution.map((dev: any) => (
-              <div key={dev.user.id} className="flex items-center gap-4 p-3 bg-orion-surface-light rounded-xl">
-                <div className="w-10 h-10 rounded-full bg-orion-primary/20 flex items-center justify-center text-orion-primary font-bold text-sm">
-                  {dev.user.name.charAt(0)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{dev.user.name}</p>
-                  <p className="text-xs text-orion-text-muted">
-                    {dev.totalCommits} commits &middot; ~{dev.totalEstimatedHours}h
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {dev.projectBreakdown.slice(0, 4).map((pb: any, i: number) => (
-                    <div key={pb.projectId} className="flex items-center gap-1">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                      <span className="text-xs text-orion-text-muted">
-                        {pb.projectName.split(' ')[0]} {pb.percentage}%
-                      </span>
-                    </div>
+        {/* Overview bar chart */}
+        {devBarData.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-sm text-orion-text-muted mb-3">Visão geral — horas estimadas por projeto</h3>
+            <div style={{ height: 280 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={devBarData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} />
+                  <YAxis stroke="#94a3b8" fontSize={12} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [`${v}h`, '']} />
+                  {Array.from(allProjectNamesFromDevs).map((name, i) => (
+                    <Bar key={name} dataKey={name} stackId="a" fill={COLORS[i % COLORS.length]} radius={i === allProjectNamesFromDevs.size - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
                   ))}
-                </div>
-              </div>
-            ))}
+                  <Legend />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
+        )}
+
+        {/* Per-dev expandable cards */}
+        <div className="space-y-3">
+          {devTimeDistribution.map((dev: any) => {
+            const isExpanded = expandedDev === dev.user.id;
+            const devPieData = dev.projectBreakdown
+              .filter((pb: any) => pb.commits > 0)
+              .map((pb: any, i: number) => ({
+                name: pb.projectName,
+                value: pb.effortScore || pb.estimatedMinutes,
+                percentage: pb.percentage,
+                color: COLORS[i % COLORS.length],
+              }));
+
+            return (
+              <div key={dev.user.id} className="bg-orion-surface-light rounded-xl border border-orion-border overflow-hidden">
+                {/* Dev header (clickable) */}
+                <button
+                  onClick={() => setExpandedDev(isExpanded ? null : dev.user.id)}
+                  className="w-full flex items-center gap-4 p-4 hover:bg-orion-bg/30 transition-colors"
+                >
+                  <div className="w-11 h-11 rounded-full bg-orion-primary/20 flex items-center justify-center text-orion-primary font-bold text-sm">
+                    {dev.user.name.charAt(0)}
+                  </div>
+                  <div className="flex-1 min-w-0 text-left">
+                    <p className="text-sm font-semibold">{dev.user.name}</p>
+                    <p className="text-xs text-orion-text-muted">
+                      {dev.totalCommits} commits &middot; ~{dev.totalEstimatedHours}h estimadas
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {dev.projectBreakdown.slice(0, 4).map((pb: any, i: number) => (
+                      <div key={pb.projectId} className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                        <span className="text-xs text-orion-text-muted font-medium">
+                          {pb.projectName.split(' ')[0]} {pb.percentage}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {isExpanded ? <ChevronUp size={18} className="text-orion-text-muted" /> : <ChevronDown size={18} className="text-orion-text-muted" />}
+                </button>
+
+                {/* Expanded detail */}
+                {isExpanded && (
+                  <div className="border-t border-orion-border p-5">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* PieChart */}
+                      {devPieData.length > 0 && (
+                        <div>
+                          <h4 className="text-sm text-orion-text-muted mb-3">Distribuição de esforço</h4>
+                          <div style={{ height: 220 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={devPieData}
+                                  dataKey="value"
+                                  nameKey="name"
+                                  cx="50%"
+                                  cy="50%"
+                                  outerRadius={85}
+                                  innerRadius={42}
+                                  label={({ name, percentage }) => `${name.split(' ')[0]} ${percentage}%`}
+                                  labelLine={true}
+                                >
+                                  {devPieData.map((entry: any, i: number) => (
+                                    <Cell key={i} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip
+                                  contentStyle={TOOLTIP_STYLE}
+                                  formatter={(value: any, name: any, props: any) => {
+                                    const entry = props.payload;
+                                    return [`${entry.percentage}% do esforço`, entry.name];
+                                  }}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Project list with bars */}
+                      <div className="space-y-3">
+                        <h4 className="text-sm text-orion-text-muted mb-3">Projetos</h4>
+                        {dev.projectBreakdown.map((pb: any, i: number) => (
+                          <div key={pb.projectId} className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                                <span className="text-sm font-medium">{pb.projectName}</span>
+                              </div>
+                              <span className="text-sm font-semibold text-orion-text-muted">{pb.percentage}%</span>
+                            </div>
+                            <div className="w-full bg-orion-bg rounded-full h-2">
+                              <div
+                                className="h-2 rounded-full transition-all"
+                                style={{ width: `${pb.percentage}%`, backgroundColor: COLORS[i % COLORS.length] }}
+                              />
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-orion-text-muted">{pb.commits} commits</span>
+                              <span className="text-xs text-orion-text-muted">~{Math.round((pb.estimatedMinutes / 60) * 10) / 10}h</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
