@@ -10,6 +10,8 @@ import { githubRouter } from './routes/github.js';
 import { notificationRouter } from './routes/notifications.js';
 import { userRouter } from './routes/users.js';
 import { organizationRouter } from './routes/organizations.js';
+import { clientRouter } from './routes/clients.js';
+import { portalRouter } from './routes/portal.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -29,6 +31,8 @@ app.use('/api/dashboard', dashboardRouter);
 app.use('/api/github', githubRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/organizations', organizationRouter);
+app.use('/api/clients', clientRouter);
+app.use('/api/portal', portalRouter);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

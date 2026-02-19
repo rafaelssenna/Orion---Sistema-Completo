@@ -243,6 +243,47 @@ class ApiClient {
     return this.request<{ summary: string; stats: { commits: number; activities: number; tasksTotal: number; tasksDone: number; tasksInProgress: number } }>(`/projects/${projectId}/ai-summary`);
   }
 
+  // Clients (HEAD/ADMIN)
+  getClients() {
+    return this.request<any[]>('/clients');
+  }
+
+  createClient(data: { name: string; email?: string; companyName?: string }) {
+    return this.request<any>('/clients', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  deleteClient(id: string) {
+    return this.request<any>(`/clients/${id}`, { method: 'DELETE' });
+  }
+
+  createClientAccess(clientId: string, projectId: string) {
+    return this.request<any>(`/clients/${clientId}/access`, {
+      method: 'POST',
+      body: JSON.stringify({ projectId }),
+    });
+  }
+
+  revokeClientAccess(accessId: string) {
+    return this.request<any>(`/clients/access/${accessId}`, { method: 'DELETE' });
+  }
+
+  // Portal (public, token-based)
+  portalAccess(token: string) {
+    return this.request<any>(`/portal/access/${token}`);
+  }
+
+  getPortalProject(clientToken: string) {
+    return this.request<any>('/portal/project', {
+      headers: { Authorization: `Bearer ${clientToken}` },
+    });
+  }
+
+  getPortalProjectPage(clientToken: string, page: number) {
+    return this.request<any>(`/portal/project?page=${page}`, {
+      headers: { Authorization: `Bearer ${clientToken}` },
+    });
+  }
+
   getAvailableRepos() {
     return this.request<Array<{
       fullName: string;

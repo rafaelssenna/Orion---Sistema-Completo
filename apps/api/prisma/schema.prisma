@@ -55,6 +55,7 @@ model Organization {
   // Relations
   users    User[]
   projects Project[]
+  clients  Client[]
 
   @@map("organizations")
 }
@@ -112,6 +113,7 @@ model Project {
   gitCommits   GitCommit[]
   chatChannel  ChatChannel?
   events       CalendarEvent[]
+  clientAccess ClientProjectAccess[]
 
   @@map("projects")
 }
@@ -316,4 +318,35 @@ model CalendarEventAttendee {
 
   @@unique([eventId, userId])
   @@map("calendar_event_attendees")
+}
+
+// ============== CLIENT PORTAL ==============
+
+model Client {
+  id             String   @id @default(cuid())
+  name           String
+  email          String?
+  companyName    String?
+  organizationId String
+  createdAt      DateTime @default(now())
+
+  organization  Organization          @relation(fields: [organizationId], references: [id])
+  projectAccess ClientProjectAccess[]
+
+  @@map("clients")
+}
+
+model ClientProjectAccess {
+  id          String   @id @default(cuid())
+  clientId    String
+  projectId   String
+  accessToken String   @unique @default(cuid())
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, projectId])
+  @@map("client_project_access")
 }
