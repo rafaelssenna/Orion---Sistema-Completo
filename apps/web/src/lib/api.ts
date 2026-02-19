@@ -161,6 +161,10 @@ class ApiClient {
     return this.request<{ message: string; totalNew: number; repos: number; failed: number }>('/github/resync-all', { method: 'POST' });
   }
 
+  fixCommitAuthors() {
+    return this.request<{ message: string; updated: number }>('/github/fix-authors', { method: 'POST' });
+  }
+
   getCommits(projectId: string) {
     return this.request<any[]>(`/github/commits/${projectId}`);
   }

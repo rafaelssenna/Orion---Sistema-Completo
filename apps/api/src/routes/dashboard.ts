@@ -217,13 +217,17 @@ dashboardRouter.get('/dev-productivity', authenticate, authorize('HEAD', 'ADMIN'
 
     const devStats = await Promise.all(
       users.map(async (user) => {
-        // ALL commits ever by this user (matched by authorId or email)
+        // Get projects where this user is a member
+        const userProjects = await prisma.projectMember.findMany({
+          where: { userId: user.id },
+          select: { projectId: true },
+        });
+        const userProjectIds = userProjects.map(p => p.projectId);
+
+        // ALL commits from projects where this user is a member
         const allCommits = await prisma.gitCommit.findMany({
           where: {
-            OR: [
-              { authorId: user.id },
-              { authorEmail: user.email },
-            ],
+            projectId: { in: userProjectIds },
           },
           select: {
             sha: true,

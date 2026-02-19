@@ -173,6 +173,46 @@ githubRouter.get('/repos/:projectId', authenticate, async (req, res) => {
   }
 });
 
+// POST /api/github/fix-authors - Fix authorId on existing commits based on project membership
+githubRouter.post('/fix-authors', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
+  try {
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const orgFilter = currentUser?.organizationId ? { organizationId: currentUser.organizationId } : {};
+
+    // Get all projects with their DEV members
+    const projects = await prisma.project.findMany({
+      where: orgFilter,
+      include: {
+        members: {
+          include: { user: { select: { id: true, role: true } } },
+        },
+      },
+    });
+
+    let updated = 0;
+
+    for (const project of projects) {
+      const devMember = project.members.find(m => m.user.role === 'DEV');
+      const ownerId = devMember?.user.id || project.members[0]?.userId;
+
+      if (!ownerId) continue;
+
+      // Update all commits of this project to have the correct authorId
+      const result = await prisma.gitCommit.updateMany({
+        where: { projectId: project.id },
+        data: { authorId: ownerId },
+      });
+
+      updated += result.count;
+    }
+
+    res.json({ message: `${updated} commits atualizados com o autor correto`, updated });
+  } catch (error: any) {
+    console.error('Fix authors error:', error);
+    res.status(500).json({ error: error.message || 'Erro ao corrigir autores' });
+  }
+});
+
 // POST /api/github/webhook - GitHub webhook endpoint
 githubRouter.post('/webhook', async (req, res) => {
   try {
@@ -194,11 +234,14 @@ githubRouter.post('/webhook', async (req, res) => {
 
       const token = repo.project.organization?.githubToken || '';
 
-      // Pre-load project members for author matching
+      // Pre-load project members - commits belong to the DEV member of the project
       const projectMembers = await prisma.projectMember.findMany({
         where: { projectId: repo.projectId },
-        include: { user: { select: { id: true, email: true } } },
+        include: { user: { select: { id: true, email: true, role: true } } },
       });
+
+      const devMember = projectMembers.find(m => m.user.role === 'DEV');
+      const projectOwnerId = devMember?.user.id || projectMembers[0]?.userId || null;
 
       for (const commit of commits || []) {
         const existing = await prisma.gitCommit.findUnique({ where: { sha: commit.id } });
@@ -224,18 +267,14 @@ githubRouter.post('/webhook', async (req, res) => {
           ? await analyzeCommitDiff(commit.message, diff)
           : null;
 
-        // Match commit author to Orion user
         const commitEmail = commit.author?.email || '';
         const commitName = commit.author?.name || '';
-        const matchedMember = projectMembers.find(
-          m => m.user.email.toLowerCase() === commitEmail.toLowerCase()
-        );
 
         await prisma.gitCommit.create({
           data: {
             repoId: repo.id,
             projectId: repo.projectId,
-            authorId: matchedMember?.user.id || null,
+            authorId: projectOwnerId,
             sha: commit.id,
             message: commit.message,
             authorEmail: commitEmail || null,
@@ -248,11 +287,10 @@ githubRouter.post('/webhook', async (req, res) => {
           },
         });
 
-        const activityUserId = matchedMember?.user.id || projectMembers[0]?.userId;
-        if (aiSummary && activityUserId) {
+        if (aiSummary && projectOwnerId) {
           await prisma.activityLog.create({
             data: {
-              userId: activityUserId,
+              userId: projectOwnerId,
               projectId: repo.projectId,
               description: aiSummary,
               type: 'AI_SUMMARY',

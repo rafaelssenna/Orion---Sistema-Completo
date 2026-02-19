@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { Github, RefreshCw, Users, Plus, Building2, Trash2 } from 'lucide-react';
+import { Github, RefreshCw, Users, Plus, Building2, Trash2, Wrench } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [savingToken, setSavingToken] = useState(false);
   const [syncingRepo, setSyncingRepo] = useState<string | null>(null);
   const [resyncingAll, setResyncingAll] = useState(false);
+  const [fixingAuthors, setFixingAuthors] = useState(false);
   const [message, setMessage] = useState('');
 
   // Register new user
@@ -86,6 +87,19 @@ export default function SettingsPage() {
       setMessage(`Erro: ${err.message}`);
     } finally {
       setResyncingAll(false);
+    }
+  };
+
+  const handleFixAuthors = async () => {
+    setFixingAuthors(true);
+    setMessage('');
+    try {
+      const result = await api.fixCommitAuthors();
+      setMessage(`${result.updated} commits corrigidos! Os commits agora pertencem ao DEV de cada projeto.`);
+    } catch (err: any) {
+      setMessage(`Erro: ${err.message}`);
+    } finally {
+      setFixingAuthors(false);
     }
   };
 
@@ -182,14 +196,24 @@ export default function SettingsPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-orion-text-muted">Repositórios Conectados</h3>
-              <button
-                onClick={handleResyncAll}
-                disabled={resyncingAll}
-                className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-orion-primary/10 text-orion-primary hover:bg-orion-primary/20 transition-colors disabled:opacity-50"
-              >
-                <RefreshCw size={14} className={resyncingAll ? 'animate-spin' : ''} />
-                {resyncingAll ? 'Resincronizando...' : 'Resincronizar Todos (completo)'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleFixAuthors}
+                  disabled={fixingAuthors}
+                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-orion-accent/10 text-orion-accent hover:bg-orion-accent/20 transition-colors disabled:opacity-50"
+                >
+                  <Wrench size={14} className={fixingAuthors ? 'animate-spin' : ''} />
+                  {fixingAuthors ? 'Corrigindo...' : 'Corrigir Autores'}
+                </button>
+                <button
+                  onClick={handleResyncAll}
+                  disabled={resyncingAll}
+                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-orion-primary/10 text-orion-primary hover:bg-orion-primary/20 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw size={14} className={resyncingAll ? 'animate-spin' : ''} />
+                  {resyncingAll ? 'Resincronizando...' : 'Resincronizar Todos'}
+                </button>
+              </div>
             </div>
             {projects.map(p => p.githubRepos?.map((repo: any) => (
               <div key={repo.id} className="flex items-center justify-between p-3 bg-orion-surface-light rounded-xl">

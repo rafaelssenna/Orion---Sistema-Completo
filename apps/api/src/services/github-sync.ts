@@ -58,11 +58,15 @@ export async function syncRepoCommits(repoId: string, fullSync = false): Promise
 
   const commits = allCommits;
 
-  // Pre-load project members with emails for author matching
+  // Pre-load project members - commits belong to the DEV member of the project
   const projectMembers = await prisma.projectMember.findMany({
     where: { projectId: repo.projectId },
-    include: { user: { select: { id: true, email: true, name: true } } },
+    include: { user: { select: { id: true, email: true, name: true, role: true } } },
   });
+
+  // Find the DEV member of this project (primary owner of commits)
+  const devMember = projectMembers.find(m => m.user.role === 'DEV');
+  const projectOwnerId = devMember?.user.id || projectMembers[0]?.userId || null;
 
   let newCommits = 0;
 
@@ -87,18 +91,14 @@ export async function syncRepoCommits(repoId: string, fullSync = false): Promise
       ? await analyzeCommitDiff(commit.commit.message, diff)
       : null;
 
-    // Match commit author to Orion user by email
     const commitEmail = commit.commit.author?.email || commit.commit.committer?.email || '';
     const commitName = commit.commit.author?.name || commit.commit.committer?.name || '';
-    const matchedMember = projectMembers.find(
-      m => m.user.email.toLowerCase() === commitEmail.toLowerCase()
-    );
 
     await prisma.gitCommit.create({
       data: {
         repoId: repo.id,
         projectId: repo.projectId,
-        authorId: matchedMember?.user.id || null,
+        authorId: projectOwnerId,
         sha: commit.sha,
         message: commit.commit.message,
         authorEmail: commitEmail || null,
@@ -111,12 +111,10 @@ export async function syncRepoCommits(repoId: string, fullSync = false): Promise
       },
     });
 
-    // Attribute activity to matched dev, or fallback to first member
-    const activityUserId = matchedMember?.user.id || projectMembers[0]?.userId;
-    if (aiSummary && activityUserId) {
+    if (aiSummary && projectOwnerId) {
       await prisma.activityLog.create({
         data: {
-          userId: activityUserId,
+          userId: projectOwnerId,
           projectId: repo.projectId,
           description: aiSummary,
           type: 'AI_SUMMARY',
