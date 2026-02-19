@@ -5,9 +5,9 @@ import { useAuth } from '@/lib/auth-context';
 import { api } from '@/lib/api';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, AreaChart, Area,
+  PieChart, Pie, Cell, AreaChart, Area, Legend,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, Users, FolderOpen, GitCommit, Clock, Code, FileCode, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertTriangle, TrendingUp, TrendingDown, Users, FolderOpen, GitCommit, Clock, Code, FileCode, Calendar, ChevronDown, ChevronUp, Target, Timer, Layers, AlertCircle, CheckCircle } from 'lucide-react';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#06b6d4'];
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -405,60 +405,285 @@ function HeadDashboard({ data, devProductivity }: { data: any; devProductivity: 
   );
 }
 
-function DevDashboard({ data }: { data: any }) {
+type DevPeriod = 'today' | 'week' | 'month';
+
+function DevDashboard({ data: _legacyData }: { data: any }) {
+  const { user } = useAuth();
+  const [timeData, setTimeData] = useState<any>(null);
+  const [period, setPeriod] = useState<DevPeriod>('week');
+  const [loadingTime, setLoadingTime] = useState(true);
+
+  useEffect(() => {
+    loadTimeData(period);
+  }, [period]);
+
+  const loadTimeData = async (p: DevPeriod) => {
+    setLoadingTime(true);
+    try {
+      const result = await api.getDevTimeManagement(p);
+      setTimeData(result);
+    } catch (err) {
+      console.error('Dev time management error:', err);
+    } finally {
+      setLoadingTime(false);
+    }
+  };
+
+  if (loadingTime || !timeData) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-pulse text-orion-primary">Carregando gestão de tempo...</div>
+      </div>
+    );
+  }
+
+  const { summary, projectDistribution, dailyTimeline, recentSessions, neglectedProjects, balanceAlerts } = timeData;
+
+  // Prepare pie chart data
+  const pieData = projectDistribution
+    .filter((p: any) => p.commits > 0)
+    .map((p: any, i: number) => ({
+      name: p.projectName,
+      value: p.estimatedMinutes,
+      percentage: p.percentage,
+      color: COLORS[i % COLORS.length],
+    }));
+
+  // Prepare daily timeline stacked bar data
+  const allProjectNames = projectDistribution.map((p: any) => p.projectName);
+  const dailyBarData = dailyTimeline.map((d: any) => {
+    const row: any = { date: d.dayName, fullDate: d.date };
+    allProjectNames.forEach((name: string) => {
+      const proj = d.projects.find((p: any) => p.projectName === name);
+      row[name] = proj ? Math.round((proj.estimatedMinutes / 60) * 10) / 10 : 0;
+    });
+    row.totalHours = Math.round((d.totalMinutes / 60) * 10) / 10;
+    return row;
+  });
+
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <SummaryCard icon={FolderOpen} label="Meus Projetos" value={data.projects?.length || 0} color="text-orion-primary" />
-        <SummaryCard icon={Clock} label="Horas esta Semana" value={`${data.hoursThisWeek || 0}h`} color="text-orion-accent" />
-        <SummaryCard icon={GitCommit} label="Commits Recentes" value={data.recentCommits?.length || 0} color="text-orion-success" />
+      {/* Header + Period Selector */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Olá, {user?.name?.split(' ')[0]}!</h1>
+          <p className="text-orion-text-muted">Veja como está sua distribuição de tempo</p>
+        </div>
+        <div className="flex items-center bg-orion-surface rounded-xl border border-orion-border p-1">
+          {(['today', 'week', 'month'] as DevPeriod[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                period === p
+                  ? 'bg-orion-primary text-white'
+                  : 'text-orion-text-muted hover:text-orion-text'
+              }`}
+            >
+              {p === 'today' ? 'Hoje' : p === 'week' ? 'Semana' : 'Mês'}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="bg-orion-surface rounded-2xl border border-orion-border p-6">
-        <h3 className="text-lg font-semibold mb-4">Minhas Tarefas</h3>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <SummaryCard icon={Clock} label="Tempo Estimado" value={`~${summary.totalEstimatedHours}h`} color="text-orion-primary" />
+        <SummaryCard icon={GitCommit} label="Commits" value={summary.totalCommits} color="text-orion-purple" />
+        <SummaryCard icon={FolderOpen} label="Projetos Ativos" value={summary.activeProjects} color="text-orion-accent" />
+        <SummaryCard icon={Layers} label="Sessões de Trabalho" value={summary.totalSessions} color="text-orion-success" />
+      </div>
+
+      {/* Balance Alerts */}
+      {balanceAlerts.length > 0 && (
         <div className="space-y-2">
-          {data.tasks?.map((task: any) => (
-            <div key={task.id} className="flex items-center justify-between p-3 bg-orion-surface-light rounded-xl">
-              <div>
-                <p className="font-medium text-sm">{task.title}</p>
-                <p className="text-xs text-orion-text-muted">{task.project?.name}</p>
-              </div>
-              <span className={`text-xs px-3 py-1 rounded-full ${
-                task.status === 'IN_PROGRESS' ? 'bg-orion-primary/20 text-orion-primary-light' :
-                task.status === 'IN_REVIEW' ? 'bg-orion-warning/20 text-orion-warning' :
-                'bg-orion-surface border border-orion-border text-orion-text-muted'
-              }`}>
-                {task.status === 'TODO' ? 'A Fazer' : task.status === 'IN_PROGRESS' ? 'Em Progresso' : task.status === 'IN_REVIEW' ? 'Em Revisão' : 'Concluída'}
-              </span>
+          {balanceAlerts.map((alert: any, i: number) => (
+            <div
+              key={i}
+              className={`flex items-center gap-3 px-5 py-3.5 rounded-xl border text-sm ${
+                alert.type === 'good_balance'
+                  ? 'bg-orion-success/10 border-orion-success/30 text-orion-success'
+                  : alert.severity === 'warning'
+                  ? 'bg-orion-warning/10 border-orion-warning/30 text-orion-warning'
+                  : 'bg-orion-primary/10 border-orion-primary/30 text-orion-primary-light'
+              }`}
+            >
+              {alert.type === 'good_balance' ? <CheckCircle size={18} /> :
+               alert.type === 'concentration' ? <Target size={18} /> :
+               <AlertCircle size={18} />}
+              <span className="font-medium">{alert.message}</span>
             </div>
           ))}
-          {(!data.tasks || data.tasks.length === 0) && (
-            <p className="text-orion-text-muted text-center py-6">Nenhuma tarefa pendente</p>
-          )}
         </div>
-      </div>
+      )}
 
-      <div className="bg-orion-surface rounded-2xl border border-orion-border p-6">
-        <h3 className="text-lg font-semibold mb-4">Commits Recentes</h3>
-        <div className="space-y-3">
-          {data.recentCommits?.map((commit: any) => (
-            <div key={commit.id} className="p-3 bg-orion-surface-light rounded-xl">
-              <div className="flex items-center gap-2 mb-1">
-                <GitCommit size={14} className="text-orion-purple" />
-                <span className="text-xs text-orion-text-muted font-mono">{commit.sha?.substring(0, 7)}</span>
-                <span className="text-xs text-orion-text-muted">&middot; {commit.project?.name}</span>
+      {/* Project Distribution: PieChart + List */}
+      <section className="bg-orion-surface rounded-2xl border border-orion-border p-6">
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Target size={20} className="text-orion-primary" />
+          Distribuição do Tempo por Projeto
+        </h2>
+
+        {pieData.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Pie Chart */}
+            <div style={{ height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    innerRadius={50}
+                    label={({ name, percentage }) => `${name} ${percentage}%`}
+                    labelLine={true}
+                  >
+                    {pieData.map((entry: any, i: number) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ background: '#111827', border: '1px solid #1e3a5f', borderRadius: '12px', fontSize: '12px' }}
+                    formatter={(value: any) => [`${Math.round(value / 60 * 10) / 10}h`, 'Tempo Estimado']}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Project List with progress bars */}
+            <div className="space-y-3 flex flex-col justify-center">
+              {projectDistribution.map((p: any, i: number) => (
+                <div key={p.projectId} className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium truncate">{p.projectName}</span>
+                      <span className="text-sm text-orion-text-muted ml-2">{p.estimatedHours}h ({p.percentage}%)</span>
+                    </div>
+                    <div className="w-full bg-orion-bg rounded-full h-2">
+                      <div
+                        className="h-2 rounded-full transition-all"
+                        style={{ width: `${p.percentage}%`, backgroundColor: COLORS[i % COLORS.length] }}
+                      />
+                    </div>
+                    <div className="flex items-center gap-3 mt-1">
+                      <span className="text-xs text-orion-text-muted">{p.commits} commits</span>
+                      <span className="text-xs text-orion-text-muted">
+                        {p.daysSinceLastCommit === 0 ? 'Último: hoje' :
+                         p.daysSinceLastCommit === 1 ? 'Último: ontem' :
+                         p.daysSinceLastCommit > 0 ? `Último: ${p.daysSinceLastCommit}d atrás` : ''}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-orion-text-muted text-center py-8">Sem commits no período selecionado.</p>
+        )}
+      </section>
+
+      {/* Daily Timeline */}
+      {dailyBarData.length > 1 && (
+        <section className="bg-orion-surface rounded-2xl border border-orion-border p-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Calendar size={20} className="text-orion-accent" />
+            Timeline da Semana
+          </h2>
+          <div style={{ height: 280 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dailyBarData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e3a5f" />
+                <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} />
+                <YAxis stroke="#94a3b8" fontSize={12} label={{ value: 'horas', angle: -90, position: 'insideLeft', style: { fill: '#94a3b8', fontSize: 11 } }} />
+                <Tooltip
+                  contentStyle={{ background: '#111827', border: '1px solid #1e3a5f', borderRadius: '12px', fontSize: '12px' }}
+                  formatter={(v: any) => [`${v}h`, '']}
+                />
+                {allProjectNames.map((name: string, i: number) => (
+                  <Bar key={name} dataKey={name} stackId="a" fill={COLORS[i % COLORS.length]} radius={i === allProjectNames.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                ))}
+                <Legend />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+
+      {/* Work Sessions */}
+      {recentSessions.length > 0 && (
+        <section className="bg-orion-surface rounded-2xl border border-orion-border p-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Timer size={20} className="text-orion-success" />
+            Sessões de Trabalho Recentes
+          </h2>
+          <div className="space-y-2">
+            {recentSessions.map((s: any, i: number) => {
+              const hours = Math.floor(s.durationMinutes / 60);
+              const mins = s.durationMinutes % 60;
+              const durationStr = hours > 0 ? `${hours}h${mins > 0 ? `${mins}min` : ''}` : `${mins}min`;
+              const projIndex = projectDistribution.findIndex((p: any) => p.projectName === s.projectName);
+
+              return (
+                <div key={i} className="flex items-center gap-4 p-3 bg-orion-surface-light rounded-xl">
+                  <div className="w-2.5 h-10 rounded-full" style={{ backgroundColor: COLORS[(projIndex >= 0 ? projIndex : i) % COLORS.length] }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{s.projectName}</span>
+                      <span className="text-xs text-orion-text-muted bg-orion-surface px-2 py-0.5 rounded">{s.commitCount} commits</span>
+                    </div>
+                    <p className="text-xs text-orion-text-muted mt-0.5">{s.label}</p>
+                  </div>
+                  <span className="text-sm font-semibold text-orion-primary shrink-0">{durationStr}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Neglected Projects */}
+      {neglectedProjects.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <AlertCircle size={20} className="text-orion-warning" />
+            Projetos sem Atenção
+          </h2>
+          {neglectedProjects.map((np: any) => (
+            <div
+              key={np.projectId}
+              className={`bg-orion-surface rounded-2xl border-l-4 border border-orion-border p-5 ${
+                np.severity === 'critical' ? 'border-l-orion-danger' : 'border-l-amber-500'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold">{np.projectName}</h3>
+                  <p className="text-sm text-orion-text-muted">
+                    {np.daysSinceLastCommit} dias sem commits
+                  </p>
+                </div>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                  np.severity === 'critical'
+                    ? 'bg-orion-danger/20 text-orion-danger'
+                    : 'bg-amber-500/20 text-amber-400'
+                }`}>
+                  {np.severity === 'critical' ? 'Crítico' : 'Atenção'}
+                </span>
               </div>
-              <p className="text-sm">{commit.aiSummary || commit.message}</p>
-              <p className="text-xs text-orion-text-muted mt-1">
-                {new Date(commit.committedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-              </p>
+              {np.lastCommitMessage && (
+                <p className="text-sm text-orion-text-muted mt-2 bg-orion-surface-light rounded-lg p-2">
+                  Último: {np.lastCommitMessage}
+                </p>
+              )}
             </div>
           ))}
-          {(!data.recentCommits || data.recentCommits.length === 0) && (
-            <p className="text-orion-text-muted text-center py-6">Nenhum commit recente</p>
-          )}
-        </div>
-      </div>
+        </section>
+      )}
     </div>
   );
 }

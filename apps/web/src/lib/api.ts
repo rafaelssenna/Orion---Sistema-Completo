@@ -149,6 +149,10 @@ class ApiClient {
     return this.request<any>(`/dashboard/strategic-metrics?period=${period}`);
   }
 
+  getDevTimeManagement(period: 'today' | 'week' | 'month' = 'week') {
+    return this.request<any>(`/dashboard/dev-time-management?period=${period}`);
+  }
+
   // GitHub
   connectRepo(projectId: string, repoFullName: string) {
     return this.request<any>('/github/connect-repo', {

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.js';
 import {
   CommitForMetrics,
+  detectWorkSessions,
   estimateMinutesFromCommits,
   groupCommitsByDay,
   groupCommitsByProject,
@@ -722,6 +723,228 @@ dashboardRouter.get('/strategic-metrics', authenticate, authorize('HEAD', 'ADMIN
     });
   } catch (error) {
     console.error('Strategic metrics error:', error);
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// GET /api/dashboard/dev-time-management - Personal time management for DEV
+const DAY_NAMES_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+dashboardRouter.get('/dev-time-management', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.id;
+    const period = (req.query.period as string) || 'week';
+    const now = new Date();
+    let fromDate: Date;
+    let label: string;
+
+    if (period === 'today') {
+      fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      label = 'Hoje';
+    } else if (period === 'month') {
+      fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      label = 'Último mês';
+    } else {
+      fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      label = 'Última semana';
+    }
+
+    // Get projects where this user is a member
+    const memberships = await prisma.projectMember.findMany({
+      where: { userId },
+      include: {
+        project: { select: { id: true, name: true, status: true } },
+      },
+    });
+    const activeProjects = memberships.filter(m => m.project.status === 'ACTIVE');
+    const projectIds = activeProjects.map(m => m.project.id);
+    const projectNameMap = new Map(activeProjects.map(m => [m.project.id, m.project.name]));
+
+    // Fetch all commits from user's projects in the period
+    const commits: CommitForMetrics[] = await prisma.gitCommit.findMany({
+      where: {
+        projectId: { in: projectIds },
+        committedAt: { gte: fromDate, lte: now },
+      },
+      select: {
+        sha: true, committedAt: true, projectId: true, authorId: true,
+        additions: true, deletions: true, filesChanged: true,
+        message: true, aiSummary: true,
+      },
+      orderBy: { committedAt: 'asc' },
+    });
+
+    // Also get last commit per project (all-time) for "neglected" detection
+    const allTimeLastCommits = await Promise.all(
+      projectIds.map(async (pid) => {
+        const last = await prisma.gitCommit.findFirst({
+          where: { projectId: pid },
+          orderBy: { committedAt: 'desc' },
+          select: { committedAt: true, message: true, aiSummary: true },
+        });
+        return { projectId: pid, last };
+      })
+    );
+
+    const totalEstimatedMinutes = estimateMinutesFromCommits(commits);
+
+    // ---- Project Distribution ----
+    const byProject = groupCommitsByProject(commits);
+    const projectDistribution = activeProjects.map(m => {
+      const pCommits = byProject.get(m.project.id) || [];
+      const mins = estimateMinutesFromCommits(pCommits);
+      const allTime = allTimeLastCommits.find(c => c.projectId === m.project.id);
+      const lastCommitAt = allTime?.last?.committedAt || null;
+      const daysSince = lastCommitAt
+        ? Math.floor((now.getTime() - new Date(lastCommitAt).getTime()) / (1000 * 60 * 60 * 24))
+        : -1;
+
+      return {
+        projectId: m.project.id,
+        projectName: m.project.name,
+        commits: pCommits.length,
+        estimatedMinutes: mins,
+        estimatedHours: Math.round((mins / 60) * 10) / 10,
+        percentage: totalEstimatedMinutes > 0 ? Math.round((mins / totalEstimatedMinutes) * 100) : 0,
+        lastCommitAt: lastCommitAt?.toISOString() || null,
+        daysSinceLastCommit: daysSince,
+      };
+    }).sort((a, b) => b.commits - a.commits);
+
+    // ---- Daily Timeline ----
+    const byDay = groupCommitsByDay(commits);
+    // Generate all days in the period
+    const allDays: string[] = [];
+    const dayIter = new Date(fromDate);
+    while (dayIter <= now) {
+      allDays.push(dayIter.toISOString().split('T')[0]);
+      dayIter.setDate(dayIter.getDate() + 1);
+    }
+
+    const dailyTimeline = allDays.map(date => {
+      const dayCommits = byDay.get(date) || [];
+      const dayByProject = groupCommitsByProject(dayCommits);
+      const d = new Date(date + 'T12:00:00');
+      const projects = Array.from(dayByProject.entries()).map(([pid, pc]) => ({
+        projectName: projectNameMap.get(pid) || 'Desconhecido',
+        estimatedMinutes: estimateMinutesFromCommits(pc),
+        commits: pc.length,
+      }));
+
+      return {
+        date,
+        dayName: DAY_NAMES_PT[d.getDay()],
+        projects,
+        totalMinutes: estimateMinutesFromCommits(dayCommits),
+      };
+    });
+
+    // ---- Work Sessions (recent, per project) ----
+    const allSessions = [];
+    for (const [pid, pCommits] of byProject.entries()) {
+      const sessions = detectWorkSessions(pCommits);
+      for (const s of sessions) {
+        allSessions.push({
+          ...s,
+          projectId: pid,
+          projectName: projectNameMap.get(pid) || 'Desconhecido',
+        });
+      }
+    }
+    allSessions.sort((a, b) => new Date(b.endTime).getTime() - new Date(a.endTime).getTime());
+
+    const todayStr = now.toISOString().split('T')[0];
+    const yesterdayStr = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    const recentSessions = allSessions.slice(0, 10).map(s => {
+      const start = new Date(s.startTime);
+      const end = new Date(s.endTime);
+      const dateStr = start.toISOString().split('T')[0];
+      const dayLabel = dateStr === todayStr ? 'Hoje' :
+        dateStr === yesterdayStr ? 'Ontem' :
+        start.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+      const timeLabel = `${dayLabel} ${start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+      return {
+        startTime: s.startTime.toISOString(),
+        endTime: s.endTime.toISOString(),
+        durationMinutes: s.durationMinutes,
+        projectName: s.projectName,
+        commitCount: s.commits.length,
+        label: timeLabel,
+      };
+    });
+
+    // ---- Neglected Projects ----
+    const neglectedProjects = projectDistribution
+      .filter(p => p.daysSinceLastCommit >= 3)
+      .map(p => {
+        const allTime = allTimeLastCommits.find(c => c.projectId === p.projectId);
+        return {
+          projectId: p.projectId,
+          projectName: p.projectName,
+          daysSinceLastCommit: p.daysSinceLastCommit,
+          lastCommitMessage: allTime?.last?.aiSummary || allTime?.last?.message || null,
+          severity: (p.daysSinceLastCommit >= 5 ? 'critical' : p.daysSinceLastCommit >= 3 ? 'warning' : 'info') as 'info' | 'warning' | 'critical',
+        };
+      })
+      .sort((a, b) => b.daysSinceLastCommit - a.daysSinceLastCommit);
+
+    // ---- Balance Alerts ----
+    const balanceAlerts: { type: string; message: string; severity: 'info' | 'warning' }[] = [];
+
+    if (activeProjects.length >= 2 && projectDistribution.length > 0) {
+      const top = projectDistribution[0];
+      if (top.percentage >= 70) {
+        const others = projectDistribution.filter(p => p.projectId !== top.projectId && p.commits === 0);
+        if (others.length > 0) {
+          balanceAlerts.push({
+            type: 'concentration',
+            message: `${top.projectName} recebeu ${top.percentage}% do seu tempo. Considere dedicar atenção a ${others.map(o => o.projectName).join(', ')}.`,
+            severity: 'warning',
+          });
+        } else {
+          balanceAlerts.push({
+            type: 'concentration',
+            message: `${top.projectName} recebeu ${top.percentage}% do seu tempo neste período.`,
+            severity: 'info',
+          });
+        }
+      }
+    }
+
+    for (const np of neglectedProjects) {
+      balanceAlerts.push({
+        type: 'neglected',
+        message: `Projeto "${np.projectName}" está há ${np.daysSinceLastCommit} dias sem atividade.`,
+        severity: np.daysSinceLastCommit >= 5 ? 'warning' : 'info',
+      });
+    }
+
+    if (balanceAlerts.length === 0 && activeProjects.length >= 2 && commits.length > 0) {
+      balanceAlerts.push({
+        type: 'good_balance',
+        message: 'Boa distribuição entre seus projetos!',
+        severity: 'info',
+      });
+    }
+
+    res.json({
+      period: { from: fromDate.toISOString(), to: now.toISOString(), label },
+      summary: {
+        totalEstimatedHours: Math.round((totalEstimatedMinutes / 60) * 10) / 10,
+        totalCommits: commits.length,
+        activeProjects: activeProjects.length,
+        totalSessions: allSessions.length,
+      },
+      projectDistribution,
+      dailyTimeline,
+      recentSessions,
+      neglectedProjects,
+      balanceAlerts,
+    });
+  } catch (error) {
+    console.error('Dev time management error:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
