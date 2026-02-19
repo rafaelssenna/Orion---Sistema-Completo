@@ -8,6 +8,7 @@ import {
   FolderKanban,
   KanbanSquare,
   Activity,
+  BarChart3,
   Bell,
   Settings,
   LogOut,
@@ -16,6 +17,7 @@ import {
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/metrics', label: 'Métricas', icon: BarChart3 },
   { href: '/projects', label: 'Projetos', icon: FolderKanban },
   { href: '/kanban', label: 'Kanban', icon: KanbanSquare },
   { href: '/activities', label: 'Atividades', icon: Activity },

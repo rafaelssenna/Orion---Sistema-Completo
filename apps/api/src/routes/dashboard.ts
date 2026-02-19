@@ -1,6 +1,13 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.js';
+import {
+  CommitForMetrics,
+  estimateMinutesFromCommits,
+  groupCommitsByDay,
+  groupCommitsByProject,
+  groupCommitsByAuthor,
+} from '../services/commit-metrics.js';
 
 export const dashboardRouter = Router();
 
@@ -111,14 +118,19 @@ dashboardRouter.get('/overview', authenticate, authorize('HEAD', 'ADMIN'), async
       });
     }
 
-    // Check for inactive projects (no activity in 3 days)
+    // Check for inactive projects (no activity or commits in 3 days)
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
     for (const project of projectSummaries) {
-      if (!project.lastActivity || new Date(project.lastActivity.createdAt) < threeDaysAgo) {
+      const lastActivityDate = project.lastActivity ? new Date(project.lastActivity.createdAt) : null;
+      const lastCommitDate = project.recentCommits?.[0]?.committedAt ? new Date(project.recentCommits[0].committedAt) : null;
+      const lastSignal = [lastActivityDate, lastCommitDate].filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0];
+
+      if (!lastSignal || lastSignal < threeDaysAgo) {
+        const daysSince = lastSignal ? Math.floor((now.getTime() - lastSignal.getTime()) / (1000 * 60 * 60 * 24)) : null;
         alerts.push({
           type: 'INACTIVE_PROJECT',
-          message: `Projeto "${project.name}" sem atividade há mais de 3 dias`,
-          severity: 'warning',
+          message: `Projeto "${project.name}" sem atividade${daysSince ? ` há ${daysSince} dias` : ''}`,
+          severity: daysSince && daysSince >= 5 ? 'critical' : 'warning',
         });
       }
     }
@@ -374,6 +386,342 @@ dashboardRouter.get('/hours-comparison', authenticate, authorize('HEAD', 'ADMIN'
 
     res.json(comparison);
   } catch {
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
+// GET /api/dashboard/strategic-metrics - Strategic metrics for HEAD/ADMIN
+dashboardRouter.get('/strategic-metrics', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
+  try {
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const orgFilter = currentUser?.organizationId ? { organizationId: currentUser.organizationId } : {};
+
+    // Parse period
+    const period = (req.query.period as string) || 'week';
+    const now = new Date();
+    let fromDate: Date;
+    let label: string;
+
+    if (period === 'today') {
+      fromDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      label = 'Hoje';
+    } else if (period === 'month') {
+      fromDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      label = 'Último mês';
+    } else {
+      fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      label = 'Última semana';
+    }
+
+    // Previous period for trend comparison
+    const periodLength = now.getTime() - fromDate.getTime();
+    const prevFrom = new Date(fromDate.getTime() - periodLength);
+    const prevTo = fromDate;
+
+    // Fetch all active projects
+    const projects = await prisma.project.findMany({
+      where: { ...orgFilter, status: 'ACTIVE' },
+      include: {
+        members: { include: { user: { select: { id: true, name: true, role: true, avatarUrl: true } } } },
+      },
+    });
+
+    // Fetch ALL commits in period for org projects
+    const projectIds = projects.map(p => p.id);
+    const commitsRaw = await prisma.gitCommit.findMany({
+      where: {
+        projectId: { in: projectIds },
+        committedAt: { gte: fromDate, lte: now },
+      },
+      select: {
+        sha: true, committedAt: true, projectId: true, authorId: true,
+        additions: true, deletions: true, filesChanged: true,
+        message: true, aiSummary: true,
+      },
+      orderBy: { committedAt: 'asc' },
+    });
+    const commits: CommitForMetrics[] = commitsRaw;
+
+    // Previous period commits (for trends)
+    const prevCommitsRaw = await prisma.gitCommit.findMany({
+      where: {
+        projectId: { in: projectIds },
+        committedAt: { gte: prevFrom, lte: prevTo },
+      },
+      select: { projectId: true, sha: true, committedAt: true, authorId: true, additions: true, deletions: true, filesChanged: true, message: true, aiSummary: true },
+    });
+
+    // All-time commits for stalled projects
+    const allTimeLastCommits = await prisma.gitCommit.groupBy({
+      by: ['projectId'],
+      where: { projectId: { in: projectIds } },
+      _max: { committedAt: true },
+      _count: { sha: true },
+    });
+    const allTimeMap = new Map(allTimeLastCommits.map(c => [c.projectId, { lastCommit: c._max.committedAt, total: c._count.sha }]));
+
+    // Group commits
+    const commitsByProject = groupCommitsByProject(commits);
+    const prevCommitsByProject = groupCommitsByProject(prevCommitsRaw);
+    const totalEstimatedMinutes = estimateMinutesFromCommits(commits);
+
+    // ---- SECTION 1: Project Effort ----
+    const projectEffort = projects.map(project => {
+      const pCommits = commitsByProject.get(project.id) || [];
+      const estimatedMinutes = estimateMinutesFromCommits(pCommits);
+      const totalAdditions = pCommits.reduce((s, c) => s + c.additions, 0);
+      const totalDeletions = pCommits.reduce((s, c) => s + c.deletions, 0);
+      const totalFilesChanged = pCommits.reduce((s, c) => s + c.filesChanged, 0);
+
+      const byDay = groupCommitsByDay(pCommits);
+      const dailyBreakdown = Array.from(byDay.entries())
+        .map(([date, dayCommits]) => ({
+          date,
+          commits: dayCommits.length,
+          estimatedMinutes: estimateMinutesFromCommits(dayCommits),
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      const allTimeInfo = allTimeMap.get(project.id);
+      const lastCommitAt = allTimeInfo?.lastCommit || null;
+      const daysSinceLastCommit = lastCommitAt
+        ? Math.floor((now.getTime() - new Date(lastCommitAt).getTime()) / (1000 * 60 * 60 * 24))
+        : -1;
+
+      return {
+        projectId: project.id,
+        projectName: project.name,
+        projectStatus: project.status,
+        projectPriority: project.priority,
+        members: project.members.map(m => ({ id: m.user.id, name: m.user.name })),
+        totalCommits: pCommits.length,
+        totalAdditions,
+        totalDeletions,
+        totalFilesChanged,
+        estimatedMinutes,
+        estimatedHours: Math.round((estimatedMinutes / 60) * 10) / 10,
+        percentageOfTotal: totalEstimatedMinutes > 0
+          ? Math.round((estimatedMinutes / totalEstimatedMinutes) * 100)
+          : 0,
+        dailyBreakdown,
+        lastCommitAt: lastCommitAt?.toISOString() || null,
+        daysSinceLastCommit,
+      };
+    }).sort((a, b) => b.totalCommits - a.totalCommits);
+
+    // ---- SECTION 2: Dev Time Distribution ----
+    const devs = await prisma.user.findMany({
+      where: { ...orgFilter, role: { in: ['DEV', 'ADMIN'] } },
+      select: { id: true, name: true, role: true, avatarUrl: true },
+    });
+
+    const devTimeDistribution = devs.map(dev => {
+      // Get projects where this dev is a member
+      const devProjectIds = projects
+        .filter(p => p.members.some(m => m.user.id === dev.id))
+        .map(p => p.id);
+
+      const devCommits = commits.filter(c => devProjectIds.includes(c.projectId));
+      const totalMinutes = estimateMinutesFromCommits(devCommits);
+
+      // Per-project breakdown
+      const devByProject = groupCommitsByProject(devCommits);
+      const projectBreakdown = Array.from(devByProject.entries())
+        .map(([pid, pCommits]) => {
+          const project = projects.find(p => p.id === pid);
+          const mins = estimateMinutesFromCommits(pCommits);
+          return {
+            projectId: pid,
+            projectName: project?.name || 'Desconhecido',
+            commits: pCommits.length,
+            estimatedMinutes: mins,
+            percentage: totalMinutes > 0 ? Math.round((mins / totalMinutes) * 100) : 0,
+          };
+        })
+        .sort((a, b) => b.commits - a.commits);
+
+      // Daily breakdown
+      const devByDay = groupCommitsByDay(devCommits);
+      const dailyBreakdown = Array.from(devByDay.entries())
+        .map(([date, dayCommits]) => {
+          const dayByProject = groupCommitsByProject(dayCommits);
+          return {
+            date,
+            commits: dayCommits.length,
+            estimatedMinutes: estimateMinutesFromCommits(dayCommits),
+            projects: Array.from(dayByProject.entries()).map(([pid, pc]) => ({
+              projectName: projects.find(p => p.id === pid)?.name || 'Desconhecido',
+              commits: pc.length,
+            })),
+          };
+        })
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      return {
+        user: { id: dev.id, name: dev.name, role: dev.role, avatarUrl: dev.avatarUrl },
+        totalCommits: devCommits.length,
+        totalEstimatedMinutes: totalMinutes,
+        totalEstimatedHours: Math.round((totalMinutes / 60) * 10) / 10,
+        projectBreakdown,
+        dailyBreakdown,
+      };
+    });
+
+    // ---- SECTION 3: Stalled Projects ----
+    const stalledProjects = [];
+    for (const project of projects) {
+      const allTimeInfo = allTimeMap.get(project.id);
+      const lastCommitDate = allTimeInfo?.lastCommit;
+      const daysSince = lastCommitDate
+        ? Math.floor((now.getTime() - new Date(lastCommitDate).getTime()) / (1000 * 60 * 60 * 24))
+        : 999;
+
+      if (daysSince < 3) continue;
+
+      // Get last commit details
+      const lastCommit = await prisma.gitCommit.findFirst({
+        where: { projectId: project.id },
+        orderBy: { committedAt: 'desc' },
+        select: { sha: true, message: true, aiSummary: true, committedAt: true, authorName: true },
+      });
+
+      // Get last activity
+      const lastActivity = await prisma.activityLog.findFirst({
+        where: { projectId: project.id },
+        orderBy: { createdAt: 'desc' },
+        include: { user: { select: { name: true } } },
+      });
+
+      // Trend: compare current vs previous period commits
+      const currCount = (commitsByProject.get(project.id) || []).length;
+      const prevCount = (prevCommitsByProject.get(project.id) || []).length;
+      let commitTrend: 'declining' | 'stable' | 'none' = 'none';
+      if (prevCount > 0 && currCount < prevCount * 0.5) commitTrend = 'declining';
+      else if (prevCount > 0) commitTrend = 'stable';
+
+      stalledProjects.push({
+        projectId: project.id,
+        projectName: project.name,
+        projectPriority: project.priority,
+        daysSinceLastCommit: daysSince,
+        lastCommit: lastCommit ? {
+          sha: lastCommit.sha,
+          message: lastCommit.message,
+          aiSummary: lastCommit.aiSummary,
+          committedAt: lastCommit.committedAt.toISOString(),
+          authorName: lastCommit.authorName,
+        } : null,
+        lastActivity: lastActivity ? {
+          description: lastActivity.description,
+          type: lastActivity.type,
+          createdAt: lastActivity.createdAt.toISOString(),
+          userName: lastActivity.user.name,
+        } : null,
+        assignedDevs: project.members
+          .filter(m => m.user.role === 'DEV')
+          .map(m => ({ id: m.user.id, name: m.user.name })),
+        totalCommitsAllTime: allTimeInfo?.total || 0,
+        commitTrend,
+        severity: (daysSince >= 5 ? 'critical' : 'warning') as 'critical' | 'warning',
+      });
+    }
+    stalledProjects.sort((a, b) => b.daysSinceLastCommit - a.daysSinceLastCommit);
+
+    // ---- SECTION 4: Insights ----
+    const insights: { type: string; message: string; severity: 'info' | 'warning' | 'critical'; relatedProjectId?: string; relatedUserId?: string }[] = [];
+
+    // Low activity per project (today vs daily average)
+    const totalDays = Math.max(1, Math.ceil((now.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)));
+    for (const pe of projectEffort) {
+      if (pe.totalCommits === 0 && pe.daysSinceLastCommit > 0 && pe.daysSinceLastCommit < 999) continue; // handled by stalled
+      const avgPerDay = pe.totalCommits / totalDays;
+      const todayStr = now.toISOString().split('T')[0];
+      const todayCommits = pe.dailyBreakdown.find(d => d.date === todayStr)?.commits || 0;
+      if (avgPerDay > 1 && todayCommits < avgPerDay * 0.3 && period !== 'today') {
+        insights.push({
+          type: 'low_activity',
+          message: `Projeto "${pe.projectName}" teve pouca atividade hoje (${todayCommits} commits vs. média de ${Math.round(avgPerDay)}/dia)`,
+          severity: 'warning',
+          relatedProjectId: pe.projectId,
+        });
+      }
+    }
+
+    // Concentration: dev >80% on 1 project when assigned to multiple
+    for (const dev of devTimeDistribution) {
+      if (dev.projectBreakdown.length > 1) {
+        const top = dev.projectBreakdown[0];
+        if (top && top.percentage >= 80) {
+          insights.push({
+            type: 'concentration',
+            message: `${dev.user.name} concentrou ${top.percentage}% do esforço em "${top.projectName}"`,
+            severity: 'info',
+            relatedUserId: dev.user.id,
+          });
+        }
+      }
+    }
+
+    // Imbalance between devs
+    const devHours = devTimeDistribution.filter(d => d.totalEstimatedHours > 0);
+    if (devHours.length >= 2) {
+      const maxDev = devHours.reduce((a, b) => a.totalEstimatedHours > b.totalEstimatedHours ? a : b);
+      const minDev = devHours.reduce((a, b) => a.totalEstimatedHours < b.totalEstimatedHours ? a : b);
+      if (minDev.totalEstimatedHours > 0) {
+        const ratio = maxDev.totalEstimatedHours / minDev.totalEstimatedHours;
+        if (ratio >= 2) {
+          insights.push({
+            type: 'imbalance',
+            message: `${maxDev.user.name} tem ~${maxDev.totalEstimatedHours}h estimadas vs. ${minDev.user.name} com ~${minDev.totalEstimatedHours}h`,
+            severity: ratio >= 3 ? 'critical' : 'warning',
+          });
+        }
+      }
+    }
+
+    // Trending up/down per project
+    for (const project of projects) {
+      const curr = (commitsByProject.get(project.id) || []).length;
+      const prev = (prevCommitsByProject.get(project.id) || []).length;
+      if (prev >= 3 && curr < prev * 0.5) {
+        insights.push({
+          type: 'trending_down',
+          message: `Projeto "${project.name}" caiu de ${prev} para ${curr} commits comparado ao período anterior`,
+          severity: 'warning',
+          relatedProjectId: project.id,
+        });
+      } else if (prev >= 2 && curr > prev * 1.5) {
+        insights.push({
+          type: 'trending_up',
+          message: `Projeto "${project.name}" subiu de ${prev} para ${curr} commits comparado ao período anterior`,
+          severity: 'info',
+          relatedProjectId: project.id,
+        });
+      }
+    }
+
+    // ---- SECTION 5: Totals ----
+    const avgCommitsPerDay = totalDays > 0 ? Math.round((commits.length / totalDays) * 10) / 10 : 0;
+    const mostActive = projectEffort.length > 0 ? projectEffort[0] : null;
+    const leastActive = projectEffort.length > 0 ? projectEffort[projectEffort.length - 1] : null;
+
+    res.json({
+      period: { from: fromDate.toISOString(), to: now.toISOString(), label },
+      projectEffort,
+      devTimeDistribution,
+      stalledProjects,
+      insights,
+      totals: {
+        totalCommits: commits.length,
+        totalEstimatedHours: Math.round((totalEstimatedMinutes / 60) * 10) / 10,
+        totalProjects: projects.length,
+        averageCommitsPerDay: avgCommitsPerDay,
+        mostActiveProject: mostActive ? { name: mostActive.projectName, commits: mostActive.totalCommits } : null,
+        leastActiveProject: leastActive ? { name: leastActive.projectName, commits: leastActive.totalCommits, daysSinceLastCommit: leastActive.daysSinceLastCommit } : null,
+      },
+    });
+  } catch (error) {
+    console.error('Strategic metrics error:', error);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
