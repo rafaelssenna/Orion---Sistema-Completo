@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authenticate, authorize, AuthRequest } from '../middleware/auth.js';
 import { syncRepoCommits } from '../services/github-sync.js';
+import { analyzeProjectState } from '../services/gemini.js';
 
 export const projectRouter = Router();
 
@@ -190,6 +191,72 @@ projectRouter.delete('/:id/members/:userId', authenticate, authorize('HEAD', 'AD
     res.json({ message: 'Membro removido' });
   } catch {
     res.status(500).json({ error: 'Erro ao remover membro' });
+  }
+});
+
+// GET /api/projects/:id/ai-summary - AI-powered project state analysis
+projectRouter.get('/:id/ai-summary', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const project = await prisma.project.findUnique({
+      where: { id: req.params.id },
+      include: {
+        members: { include: { user: { select: { id: true, name: true, role: true } } } },
+      },
+    });
+
+    if (!project) {
+      res.status(404).json({ error: 'Projeto não encontrado' });
+      return;
+    }
+
+    // Get ALL commits for this project (oldest first)
+    const commits = await prisma.gitCommit.findMany({
+      where: { projectId: project.id },
+      orderBy: { committedAt: 'asc' },
+      select: { message: true, authorName: true, aiSummary: true, committedAt: true },
+    });
+
+    // Get ALL activities for this project (oldest first)
+    const activities = await prisma.activityLog.findMany({
+      where: { projectId: project.id },
+      include: { user: { select: { name: true } } },
+      orderBy: { date: 'asc' },
+    });
+
+    // Task counts
+    const [tasksTotal, tasksDone, tasksInProgress] = await Promise.all([
+      prisma.task.count({ where: { projectId: project.id } }),
+      prisma.task.count({ where: { projectId: project.id, status: 'DONE' } }),
+      prisma.task.count({ where: { projectId: project.id, status: 'IN_PROGRESS' } }),
+    ]);
+
+    const summary = await analyzeProjectState({
+      projectName: project.name,
+      commits: commits.map(c => ({
+        message: c.message,
+        authorName: c.authorName || 'Desconhecido',
+        date: c.committedAt.toLocaleDateString('pt-BR'),
+        aiSummary: c.aiSummary,
+      })),
+      activities: activities.map(a => ({
+        description: a.description,
+        type: a.type,
+        userName: a.user?.name || 'Desconhecido',
+        date: a.date.toLocaleDateString('pt-BR'),
+      })),
+      members: project.members.map(m => ({
+        name: m.user.name,
+        role: m.user.role,
+      })),
+      tasksTotal,
+      tasksDone,
+      tasksInProgress,
+    });
+
+    res.json({ summary, stats: { commits: commits.length, activities: activities.length, tasksTotal, tasksDone, tasksInProgress } });
+  } catch (error) {
+    console.error('AI summary error:', error);
+    res.status(500).json({ error: 'Erro ao gerar análise do projeto' });
   }
 });
 

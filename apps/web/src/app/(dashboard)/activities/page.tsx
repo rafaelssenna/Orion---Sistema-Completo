@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { Plus, Send, GitCommit, TrendingUp, AlertCircle, Package, FileText } from 'lucide-react';
+import { Plus, Send, TrendingUp, AlertCircle, Package, FileText, Sparkles, ChevronDown, ChevronUp, RefreshCw, GitCommit, CheckCircle, Clock, BarChart3 } from 'lucide-react';
 
 const typeIcons: Record<string, any> = {
   UPDATE: FileText,
@@ -35,6 +35,11 @@ export default function ActivitiesPage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [selectedProjectFilter, setSelectedProjectFilter] = useState('');
+
+  // AI Summary state
+  const [aiSummaries, setAiSummaries] = useState<Record<string, { summary: string; stats: any; loading: boolean }>>({});
+  const [expandedProject, setExpandedProject] = useState<string | null>(null);
 
   // Form state
   const [projectId, setProjectId] = useState('');
@@ -85,6 +90,23 @@ export default function ActivitiesPage() {
     }
   };
 
+  const generateAiSummary = async (projId: string) => {
+    setAiSummaries(prev => ({ ...prev, [projId]: { summary: '', stats: null, loading: true } }));
+    setExpandedProject(projId);
+
+    try {
+      const result = await api.getProjectAiSummary(projId);
+      setAiSummaries(prev => ({ ...prev, [projId]: { summary: result.summary, stats: result.stats, loading: false } }));
+    } catch (err) {
+      console.error(err);
+      setAiSummaries(prev => ({ ...prev, [projId]: { summary: 'Erro ao gerar análise. Verifique se a chave Gemini está configurada.', stats: null, loading: false } }));
+    }
+  };
+
+  const filteredActivities = selectedProjectFilter
+    ? activities.filter(a => a.projectId === selectedProjectFilter)
+    : activities;
+
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="animate-pulse text-orion-primary">Carregando atividades...</div></div>;
   }
@@ -95,7 +117,7 @@ export default function ActivitiesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Atividades</h1>
-          <p className="text-orion-text-muted">Registro de atividades e progresso</p>
+          <p className="text-orion-text-muted">Supervisão inteligente e registro de progresso</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
@@ -105,6 +127,122 @@ export default function ActivitiesPage() {
           Registrar Atividade
         </button>
       </div>
+
+      {/* AI Project Summaries */}
+      {projects.length > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles size={18} className="text-orion-accent" />
+            <h2 className="font-semibold">Análise IA por Projeto</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {projects.map(proj => {
+              const aiData = aiSummaries[proj.id];
+              const isExpanded = expandedProject === proj.id;
+
+              return (
+                <div key={proj.id} className={`bg-orion-surface rounded-2xl border transition-all ${isExpanded ? 'border-orion-accent/50 col-span-full' : 'border-orion-border'}`}>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-xl bg-orion-accent/10">
+                          <BarChart3 size={18} className="text-orion-accent" />
+                        </div>
+                        <div>
+                          <h3 className="font-medium">{proj.name}</h3>
+                          <div className="flex items-center gap-3 text-xs text-orion-text-muted mt-0.5">
+                            <span className="flex items-center gap-1"><GitCommit size={12} /> {proj._count?.gitCommits || 0} commits</span>
+                            <span className="flex items-center gap-1"><CheckCircle size={12} /> {proj._count?.tasks || 0} tarefas</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {aiData?.loading ? (
+                          <div className="flex items-center gap-2 text-sm text-orion-accent">
+                            <RefreshCw size={14} className="animate-spin" />
+                            Analisando...
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (isExpanded && aiData?.summary) {
+                                setExpandedProject(null);
+                              } else {
+                                generateAiSummary(proj.id);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-orion-accent/10 text-orion-accent hover:bg-orion-accent/20 transition-colors"
+                          >
+                            <Sparkles size={14} />
+                            {aiData?.summary ? (isExpanded ? 'Fechar' : 'Ver Análise') : 'Gerar Análise'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Expanded AI Summary */}
+                    {isExpanded && aiData?.summary && !aiData.loading && (
+                      <div className="mt-4 pt-4 border-t border-orion-border">
+                        {/* Stats bar */}
+                        {aiData.stats && (
+                          <div className="flex items-center gap-4 mb-4 text-sm">
+                            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orion-primary/10 text-orion-primary">
+                              <GitCommit size={14} /> {aiData.stats.commits} commits analisados
+                            </span>
+                            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orion-success/10 text-orion-success">
+                              <CheckCircle size={14} /> {aiData.stats.tasksDone}/{aiData.stats.tasksTotal} tarefas
+                            </span>
+                            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-orion-warning/10 text-orion-warning">
+                              <Clock size={14} /> {aiData.stats.tasksInProgress} em progresso
+                            </span>
+                          </div>
+                        )}
+
+                        {/* AI Generated content */}
+                        <div className="prose prose-invert prose-sm max-w-none text-orion-text">
+                          {aiData.summary.split('\n').map((line, i) => {
+                            if (!line.trim()) return <br key={i} />;
+                            // Bold headers
+                            if (line.startsWith('**') || line.startsWith('## ') || line.startsWith('# ')) {
+                              const clean = line.replace(/^#+\s*/, '').replace(/\*\*/g, '');
+                              return <h3 key={i} className="text-base font-semibold text-orion-accent mt-3 mb-1">{clean}</h3>;
+                            }
+                            // Numbered or bulleted items
+                            if (line.match(/^\d+\.\s\*\*/) || line.startsWith('- **')) {
+                              const parts = line.replace(/^\d+\.\s*/, '').replace(/^-\s*/, '');
+                              const boldMatch = parts.match(/\*\*(.+?)\*\*(.*)/);
+                              if (boldMatch) {
+                                return (
+                                  <p key={i} className="ml-4 mb-1">
+                                    <span className="font-semibold text-orion-text">{boldMatch[1]}</span>
+                                    <span className="text-orion-text-muted">{boldMatch[2]}</span>
+                                  </p>
+                                );
+                              }
+                            }
+                            if (line.startsWith('- ')) {
+                              return <p key={i} className="ml-4 mb-1 text-orion-text-muted">• {line.slice(2)}</p>;
+                            }
+                            return <p key={i} className="text-orion-text-muted mb-1">{line}</p>;
+                          })}
+                        </div>
+
+                        {/* Regenerate button */}
+                        <button
+                          onClick={() => generateAiSummary(proj.id)}
+                          className="mt-4 flex items-center gap-1.5 text-xs text-orion-text-muted hover:text-orion-accent transition-colors"
+                        >
+                          <RefreshCw size={12} /> Gerar novamente
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Quick Add Form */}
       {showForm && (
@@ -175,10 +313,30 @@ export default function ActivitiesPage() {
         </form>
       )}
 
+      {/* Filter by project */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-orion-text-muted">Filtrar:</span>
+        <button
+          onClick={() => setSelectedProjectFilter('')}
+          className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${!selectedProjectFilter ? 'bg-orion-primary text-white' : 'bg-orion-surface border border-orion-border text-orion-text-muted hover:border-orion-primary'}`}
+        >
+          Todos
+        </button>
+        {projects.map(p => (
+          <button
+            key={p.id}
+            onClick={() => setSelectedProjectFilter(p.id)}
+            className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${selectedProjectFilter === p.id ? 'bg-orion-primary text-white' : 'bg-orion-surface border border-orion-border text-orion-text-muted hover:border-orion-primary'}`}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+
       {/* Activity Feed */}
       <div className="bg-orion-surface rounded-2xl border border-orion-border overflow-hidden">
         <div className="divide-y divide-orion-border">
-          {activities.map((activity) => {
+          {filteredActivities.map((activity) => {
             const Icon = typeIcons[activity.type] || FileText;
             return (
               <div key={activity.id} className="flex items-start gap-4 p-5 hover:bg-orion-surface-light/50 transition-colors">
@@ -212,7 +370,7 @@ export default function ActivitiesPage() {
             );
           })}
 
-          {activities.length === 0 && (
+          {filteredActivities.length === 0 && (
             <div className="text-center py-16 text-orion-text-muted">
               <FileText size={48} className="mx-auto mb-4 opacity-30" />
               <p>Nenhuma atividade registrada</p>

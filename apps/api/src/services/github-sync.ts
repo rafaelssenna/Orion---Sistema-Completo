@@ -37,10 +37,23 @@ export async function syncRepoCommits(repoId: string): Promise<number> {
   if (!token) throw new Error('Token GitHub não configurado na organização');
 
   const since = repo.lastSyncAt?.toISOString() || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const commits: any[] = await githubFetch(
-    `https://api.github.com/repos/${repo.repoFullName}/commits?since=${since}&per_page=100`,
-    token
-  );
+
+  // Paginate through all commits
+  let allCommits: any[] = [];
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const commits: any[] = await githubFetch(
+      `https://api.github.com/repos/${repo.repoFullName}/commits?since=${since}&per_page=100&page=${page}`,
+      token
+    );
+    allCommits = allCommits.concat(commits);
+    hasMore = commits.length === 100;
+    page++;
+  }
+
+  const commits = allCommits;
 
   // Pre-load project members with emails for author matching
   const projectMembers = await prisma.projectMember.findMany({

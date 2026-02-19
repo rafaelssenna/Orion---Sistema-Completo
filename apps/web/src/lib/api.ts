@@ -211,6 +211,10 @@ class ApiClient {
     });
   }
 
+  getProjectAiSummary(projectId: string) {
+    return this.request<{ summary: string; stats: { commits: number; activities: number; tasksTotal: number; tasksDone: number; tasksInProgress: number } }>(`/projects/${projectId}/ai-summary`);
+  }
+
   getAvailableRepos() {
     return this.request<Array<{
       fullName: string;
