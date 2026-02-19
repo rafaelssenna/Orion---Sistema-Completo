@@ -165,6 +165,37 @@ projectRouter.put('/:id', authenticate, authorize('HEAD', 'ADMIN'), async (req, 
   }
 });
 
+// PUT /api/projects/:id/status - Any member can change project status
+projectRouter.put('/:id/status', authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { status } = req.body;
+    if (!['ACTIVE', 'PAUSED', 'COMPLETED'].includes(status)) {
+      res.status(400).json({ error: 'Status inválido' });
+      return;
+    }
+
+    // Verify user is a member of this project (or HEAD/ADMIN)
+    if (req.user!.role === 'DEV') {
+      const membership = await prisma.projectMember.findUnique({
+        where: { projectId_userId: { projectId: req.params.id, userId: req.user!.id } },
+      });
+      if (!membership) {
+        res.status(403).json({ error: 'Você não é membro deste projeto' });
+        return;
+      }
+    }
+
+    const project = await prisma.project.update({
+      where: { id: req.params.id },
+      data: { status },
+    });
+
+    res.json(project);
+  } catch {
+    res.status(500).json({ error: 'Erro interno do servidor' });
+  }
+});
+
 // POST /api/projects/:id/members (HEAD, ADMIN only)
 projectRouter.post('/:id/members', authenticate, authorize('HEAD', 'ADMIN'), async (req, res) => {
   try {

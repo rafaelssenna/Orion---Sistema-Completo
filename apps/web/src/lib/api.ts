@@ -82,6 +82,10 @@ class ApiClient {
     return this.request<any>(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   }
 
+  updateProjectStatus(id: string, status: 'ACTIVE' | 'PAUSED' | 'COMPLETED') {
+    return this.request<any>(`/projects/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+  }
+
   deleteProject(id: string) {
     return this.request<any>(`/projects/${id}`, { method: 'DELETE' });
   }

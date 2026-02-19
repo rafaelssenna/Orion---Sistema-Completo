@@ -7,7 +7,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, Legend,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, TrendingDown, Users, FolderOpen, GitCommit, Clock, Code, FileCode, Calendar, ChevronDown, ChevronUp, Target, Timer, Layers, AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertTriangle, TrendingUp, TrendingDown, Users, FolderOpen, GitCommit, Clock, Code, FileCode, Calendar, ChevronDown, ChevronUp, Target, Timer, Layers, AlertCircle, CheckCircle, Pause, Play } from 'lucide-react';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#06b6d4'];
 const DAY_NAMES = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -429,6 +429,17 @@ function DevDashboard({ data: _legacyData }: { data: any }) {
     }
   };
 
+  const handleToggleProjectStatus = async (projectId: string, currentlyActive: boolean) => {
+    const newStatus = currentlyActive ? 'PAUSED' : 'ACTIVE';
+    if (currentlyActive && !confirm('Pausar este projeto? Ele não aparecerá mais nas métricas ativas.')) return;
+    try {
+      await api.updateProjectStatus(projectId, newStatus);
+      loadTimeData(period);
+    } catch (err: any) {
+      alert(`Erro: ${err.message}`);
+    }
+  };
+
   if (loadingTime || !timeData) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -578,6 +589,13 @@ function DevDashboard({ data: _legacyData }: { data: any }) {
                       </span>
                     </div>
                   </div>
+                  <button
+                    onClick={() => handleToggleProjectStatus(p.projectId, true)}
+                    className="shrink-0 p-1.5 rounded-lg text-orion-text-muted hover:text-orion-warning hover:bg-orion-warning/10 transition-colors"
+                    title="Pausar projeto"
+                  >
+                    <Pause size={14} />
+                  </button>
                 </div>
               ))}
             </div>
