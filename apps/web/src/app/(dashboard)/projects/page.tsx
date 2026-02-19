@@ -142,27 +142,41 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [clientName, setClientName] = useState('');
-  const [priority, setPriority] = useState('MEDIUM');
   const [selectedRepo, setSelectedRepo] = useState('');
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [availableRepos, setAvailableRepos] = useState<any[]>([]);
+  const [orgUsers, setOrgUsers] = useState<any[]>([]);
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const loadRepos = async () => {
+    const loadData = async () => {
       setLoadingRepos(true);
       try {
-        const repos = await api.getAvailableRepos();
+        const [repos, org] = await Promise.all([
+          api.getAvailableRepos().catch(() => []),
+          api.getMyOrganization().catch(() => null),
+        ]);
         setAvailableRepos(repos);
+        if (org?.users) {
+          // Show only DEV and ADMIN users (not HEAD)
+          setOrgUsers(org.users.filter((u: any) => u.role !== 'HEAD'));
+        }
       } catch {
-        // Token not configured - silently fail
+        // Silently fail
       } finally {
         setLoadingRepos(false);
       }
     };
-    loadRepos();
+    loadData();
   }, []);
+
+  const toggleMember = (userId: string) => {
+    setSelectedMembers(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,7 +188,7 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
         name,
         description,
         clientName,
-        priority,
+        memberIds: selectedMembers,
         ...(selectedRepo && { repoFullName: selectedRepo }),
       });
       onCreated();
@@ -187,7 +201,7 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-orion-surface rounded-2xl border border-orion-border p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+      <div className="bg-orion-surface rounded-2xl border border-orion-border p-6 w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h2 className="text-xl font-semibold mb-4">Novo Projeto</h2>
 
         {error && <div className="bg-orion-danger/10 border border-orion-danger/30 text-orion-danger rounded-lg p-3 mb-4 text-sm">{error}</div>}
@@ -221,20 +235,46 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
             />
           </div>
 
-          <div>
-            <label className="block text-sm text-orion-text-muted mb-1">Prioridade</label>
-            <select
-              value={priority}
-              onChange={e => setPriority(e.target.value)}
-              className="w-full bg-orion-surface-light border border-orion-border rounded-lg px-4 py-2.5 text-orion-text focus:outline-none focus:border-orion-primary"
-            >
-              <option value="LOW">Baixa</option>
-              <option value="MEDIUM">Média</option>
-              <option value="HIGH">Alta</option>
-              <option value="URGENT">Urgente</option>
-            </select>
-          </div>
+          {/* Members selection */}
+          {orgUsers.length > 0 && (
+            <div>
+              <label className="block text-sm text-orion-text-muted mb-2">
+                <Users size={14} className="inline mr-1" />
+                Atribuir Membros
+              </label>
+              <div className="space-y-1.5">
+                {orgUsers.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => toggleMember(u.id)}
+                    className={`w-full flex items-center gap-3 p-2.5 rounded-lg border transition-colors text-left ${
+                      selectedMembers.includes(u.id)
+                        ? 'border-orion-primary bg-orion-primary/10'
+                        : 'border-orion-border bg-orion-surface-light hover:border-orion-primary/50'
+                    }`}
+                  >
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                      selectedMembers.includes(u.id) ? 'bg-orion-primary text-white' : 'bg-orion-primary/20 text-orion-primary'
+                    }`}>
+                      {u.name.charAt(0)}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{u.name}</p>
+                      <p className="text-xs text-orion-text-muted">{u.role === 'ADMIN' ? 'Admin' : 'Dev'}</p>
+                    </div>
+                    {selectedMembers.includes(u.id) && (
+                      <div className="w-5 h-5 rounded-full bg-orion-primary flex items-center justify-center">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
+          {/* GitHub repo selection */}
           <div>
             <label className="block text-sm text-orion-text-muted mb-1">
               <Github size={14} className="inline mr-1" />
@@ -242,7 +282,7 @@ function CreateProjectModal({ onClose, onCreated }: { onClose: () => void; onCre
             </label>
             {loadingRepos ? (
               <div className="text-sm text-orion-text-muted py-2.5 px-4 bg-orion-surface-light rounded-lg border border-orion-border">
-                Carregando repositórios...
+                Carregando...
               </div>
             ) : availableRepos.length > 0 ? (
               <select
