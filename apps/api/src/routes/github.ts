@@ -273,6 +273,98 @@ githubRouter.post('/fix-stats', authenticate, authorize('HEAD', 'ADMIN'), async 
   }
 });
 
+// POST /api/github/generate-summaries - Generate AI summaries for commits that don't have one
+githubRouter.post('/generate-summaries', authenticate, authorize('HEAD', 'ADMIN'), async (req: AuthRequest, res) => {
+  try {
+    const token = await getOrgGitHubToken(req.user!.id);
+    const currentUser = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    const orgFilter = currentUser?.organizationId ? { organizationId: currentUser.organizationId } : {};
+
+    // Find commits without AI summary
+    const commits = await prisma.gitCommit.findMany({
+      where: {
+        aiSummary: null,
+        project: orgFilter,
+      },
+      include: {
+        repo: { select: { repoFullName: true } },
+      },
+      orderBy: { committedAt: 'asc' },
+    });
+
+    if (commits.length === 0) {
+      res.json({ message: 'Todos os commits já possuem resumo IA', generated: 0 });
+      return;
+    }
+
+    let generated = 0;
+    let errors = 0;
+
+    for (const commit of commits) {
+      try {
+        // Fetch diff from GitHub
+        const detail: any = await githubFetch(
+          `https://api.github.com/repos/${commit.repo.repoFullName}/commits/${commit.sha}`,
+          token
+        );
+
+        const diff = (detail.files || [])
+          .map((f: any) => `${f.filename}: +${f.additions} -${f.deletions}\n${f.patch || ''}`)
+          .join('\n\n');
+
+        if (!diff) {
+          errors++;
+          continue;
+        }
+
+        const aiSummary = await analyzeCommitDiff(commit.message, diff);
+
+        await prisma.gitCommit.update({
+          where: { sha: commit.sha },
+          data: { aiSummary },
+        });
+
+        // Also create activity log entry if there's an author
+        if (commit.authorId) {
+          const existingLog = await prisma.activityLog.findFirst({
+            where: {
+              projectId: commit.projectId,
+              type: 'AI_SUMMARY',
+              description: aiSummary,
+            },
+          });
+          if (!existingLog) {
+            await prisma.activityLog.create({
+              data: {
+                userId: commit.authorId,
+                projectId: commit.projectId,
+                description: aiSummary,
+                type: 'AI_SUMMARY',
+                date: commit.committedAt,
+              },
+            });
+          }
+        }
+
+        generated++;
+      } catch (err) {
+        console.error(`Error generating summary for ${commit.sha}:`, err);
+        errors++;
+      }
+    }
+
+    res.json({
+      message: `${generated} resumos gerados com sucesso`,
+      generated,
+      errors,
+      total: commits.length,
+    });
+  } catch (error: any) {
+    console.error('Generate summaries error:', error);
+    res.status(500).json({ error: error.message || 'Erro ao gerar resumos' });
+  }
+});
+
 // POST /api/github/webhook - GitHub webhook endpoint
 githubRouter.post('/webhook', async (req, res) => {
   try {

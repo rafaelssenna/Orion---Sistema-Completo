@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
-import { Github, RefreshCw, Users, Plus, Building2, Trash2, Wrench, BarChart3, Globe, Link2, Copy, X, Check } from 'lucide-react';
+import { Github, RefreshCw, Users, Plus, Building2, Trash2, Wrench, BarChart3, Globe, Link2, Copy, X, Check, Sparkles } from 'lucide-react';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const [resyncingAll, setResyncingAll] = useState(false);
   const [fixingAuthors, setFixingAuthors] = useState(false);
   const [fixingStats, setFixingStats] = useState(false);
+  const [generatingSummaries, setGeneratingSummaries] = useState(false);
   const [message, setMessage] = useState('');
 
   // Register new user
@@ -127,6 +128,19 @@ export default function SettingsPage() {
       setMessage(`Erro: ${err.message}`);
     } finally {
       setFixingStats(false);
+    }
+  };
+
+  const handleGenerateSummaries = async () => {
+    setGeneratingSummaries(true);
+    setMessage('Gerando resumos IA para commits antigos... isso pode demorar alguns minutos.');
+    try {
+      const result = await api.generateSummaries();
+      setMessage(`${result.generated} resumos gerados com sucesso!${result.errors > 0 ? ` ${result.errors} falharam.` : ''} Agora o portal do cliente terá conteúdo.`);
+    } catch (err: any) {
+      setMessage(`Erro: ${err.message}`);
+    } finally {
+      setGeneratingSummaries(false);
     }
   };
 
@@ -285,6 +299,14 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-orion-text-muted">Repositórios Conectados</h3>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={handleGenerateSummaries}
+                  disabled={generatingSummaries}
+                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg bg-orion-success/10 text-orion-success hover:bg-orion-success/20 transition-colors disabled:opacity-50"
+                >
+                  <Sparkles size={14} className={generatingSummaries ? 'animate-pulse' : ''} />
+                  {generatingSummaries ? 'Gerando...' : 'Gerar Resumos IA'}
+                </button>
                 <button
                   onClick={handleFixStats}
                   disabled={fixingStats}
