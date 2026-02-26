@@ -12,6 +12,7 @@ import { userRouter } from './routes/users.js';
 import { organizationRouter } from './routes/organizations.js';
 import { clientRouter } from './routes/clients.js';
 import { portalRouter } from './routes/portal.js';
+import { ideaRouter } from './routes/ideas.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,6 +34,7 @@ app.use('/api/notifications', notificationRouter);
 app.use('/api/organizations', organizationRouter);
 app.use('/api/clients', clientRouter);
 app.use('/api/portal', portalRouter);
+app.use('/api/ideas', ideaRouter);
 
 // Health check endpoint
 app.get('/api/health', (_req, res) => {

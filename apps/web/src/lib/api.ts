@@ -247,6 +247,23 @@ class ApiClient {
     return this.request<{ summary: string; stats: { commits: number; activities: number; tasksTotal: number; tasksDone: number; tasksInProgress: number } }>(`/projects/${projectId}/ai-summary`);
   }
 
+  // Ideas
+  getIdeas(sort?: 'recent' | 'votes') {
+    return this.request<any[]>(`/ideas${sort ? `?sort=${sort}` : ''}`);
+  }
+
+  createIdea(data: { title: string; description: string; category?: string }) {
+    return this.request<any>('/ideas', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  toggleIdeaVote(id: string) {
+    return this.request<{ voted: boolean }>(`/ideas/${id}/vote`, { method: 'POST' });
+  }
+
+  deleteIdea(id: string) {
+    return this.request<any>(`/ideas/${id}`, { method: 'DELETE' });
+  }
+
   // Clients (HEAD/ADMIN)
   getClients() {
     return this.request<any[]>('/clients');

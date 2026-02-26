@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   Github,
+  Lightbulb,
 } from 'lucide-react';
 
 const navItems = [
@@ -21,6 +22,7 @@ const navItems = [
   { href: '/projects', label: 'Projetos', icon: FolderKanban },
   { href: '/kanban', label: 'Kanban', icon: KanbanSquare },
   { href: '/activities', label: 'Atividades', icon: Activity },
+  { href: '/ideas', label: 'Caixinha de Ideias', icon: Lightbulb },
   { href: '/settings', label: 'Configurações', icon: Settings },
 ];
 
